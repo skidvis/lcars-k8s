@@ -63,7 +63,7 @@ POD_SORTS = (
     ("node", "NODE", lambda p: (p.node, p.name)),
 )
 
-KEY_LEGEND = ("2-4:view  n:ns  /:filter  <>:sort  r:rev  l:logs  d:detail  "
+KEY_LEGEND = ("2-5:view  n:ns  /:filter  <>:sort  r:rev  l:logs  d:detail  "
               "x:delete  space:hold  ?:help  q:quit")
 
 
@@ -118,6 +118,7 @@ class LcarsK8s(App):
         Binding("2", "view('pods')", "Pods", show=False),
         Binding("3", "view('nodes')", "Nodes", show=False),
         Binding("4", "view('events')", "Events", show=False),
+        Binding("5", "view('deployments')", "Deployments", show=False),
         Binding("tab", "cycle_view", "Next view", show=False),
         Binding("n", "cycle_namespace", "Namespace", show=False),
         Binding("a", "all_namespaces", "All namespaces", show=False),
@@ -141,19 +142,21 @@ class LcarsK8s(App):
     ]
 
     def __init__(self, source, interval: float = 2.0, namespace: str = "",
-                 view: str = "pods") -> None:
+                 view: str = "pods", sidebar: str = "left") -> None:
         super().__init__()
         self.source = source
         self.interval = interval
         self.namespace = namespace
         self.view = view
+        self.sidebar_side = sidebar
         self.snapshot: Snapshot | None = None
         self.filter_text = ""
-        self.sort_index = 0
-        self.sort_reverse = True
+        self.sort_index = 5
+        self.sort_reverse = False
         self.paused = False
         self.visible_pods: list = []
         self.visible_nodes: list = []
+        self.visible_deployments: list = []
         self._timer = None
         self._busy = False
 
@@ -168,7 +171,8 @@ class LcarsK8s(App):
     def compose(self) -> ComposeResult:
         yield LcarsHeader(id="header")
         with Horizontal(id="body"):
-            yield LcarsSidebar()
+            if self.sidebar_side == "left":
+                yield LcarsSidebar(side="left")
             with Vertical(id="main"):
                 with Horizontal(id="meters"):
                     yield LoadPanel("CLUSTER CPU", "31-882", P.ORANGE, P.LOAD_STOPS,
@@ -184,8 +188,12 @@ class LcarsK8s(App):
                                     cursor_type="row", header_height=1)
                     yield DataTable(id="events", classes="hidden", zebra_stripes=False,
                                     cursor_type="row", header_height=1)
+                    yield DataTable(id="deployments", classes="hidden", zebra_stripes=False,
+                                    cursor_type="row", header_height=1)
                 yield Input(placeholder="FILTER — name, namespace, node or status",
                             id="filter")
+            if self.sidebar_side == "right":
+                yield LcarsSidebar(side="right")
         yield LcarsFooter(id="footer")
 
     def on_mount(self) -> None:
@@ -227,6 +235,15 @@ class LcarsK8s(App):
             ("N", "count", 4), ("MESSAGE", "message", 56),
         ):
             events.add_column(Text(label), key=key, width=width)
+
+        deployments = self.query_one("#deployments", DataTable)
+        for label, key, width in (
+            ("NS", "namespace", 16), ("DEPLOYMENT", "name", 38),
+            ("READY", "ready", 8), ("UP-TO-DATE", "updated", 10),
+            ("AVAILABLE", "available", 10), ("UNAVAILABLE", "unavailable", 11),
+            ("STRATEGY", "strategy", 14), ("AGE", "age", 7),
+        ):
+            deployments.add_column(Text(label), key=key, width=width)
 
     # -- polling ---------------------------------------------------------
     def _schedule(self) -> None:
@@ -282,7 +299,7 @@ class LcarsK8s(App):
         self.query_one(StatStrip).update_snapshot(snapshot)
 
         sidebar = self.query_one(LcarsSidebar)
-        sidebar.namespaces = tuple(snapshot.namespaces)
+        sidebar.namespaces = tuple(sorted(snapshot.namespaces, key=str.casefold))
         sidebar.namespace = self.namespace
         sidebar.paused = self.paused
         sidebar.interval = self.interval
@@ -290,6 +307,7 @@ class LcarsK8s(App):
         self._fill_pods()
         self._fill_nodes()
         self._fill_events()
+        self._fill_deployments()
         self._update_table_bar()
 
         if snapshot.errors and not self.paused:
@@ -364,8 +382,11 @@ class LcarsK8s(App):
         selected = self._selected_key(table)
         offset = table.scroll_offset.y
 
-        nodes = [n for n in self.snapshot.nodes
-                 if self._matches(n.name, n.roles, n.condition)]
+        nodes = sorted(
+            (n for n in self.snapshot.nodes
+             if self._matches(n.name, n.roles, n.condition)),
+            key=lambda node: node.name.casefold(),
+        )
         self.visible_nodes = nodes
         table.clear()
         for node in nodes:
@@ -390,6 +411,38 @@ class LcarsK8s(App):
                 Text(humanize_age(node.created), style=P.GREY),
                 Text(node.internal_ip, style=P.GREY),
                 key=node.name,
+            )
+        self._restore(table, selected, offset)
+
+    def _fill_deployments(self) -> None:
+        if not self.snapshot:
+            return
+        table = self.query_one("#deployments", DataTable)
+        selected = self._selected_key(table)
+        offset = table.scroll_offset.y
+        deployments = sorted(
+            (deployment for deployment in self.snapshot.deployments
+             if (not self.namespace or deployment.namespace == self.namespace)
+             and self._matches(deployment.name, deployment.namespace,
+                               deployment.strategy)),
+            key=lambda deployment: (deployment.name.casefold(),
+                                    deployment.namespace.casefold()),
+        )
+        self.visible_deployments = deployments
+        table.clear()
+        for deployment in deployments:
+            health = P.ANAKIWA if deployment.healthy else P.MARS
+            table.add_row(
+                Text(deployment.namespace[:16], style=P.PERIWINKLE),
+                Text(deployment.name[:38], style=P.TAN),
+                Text(f"{deployment.ready}/{deployment.replicas}", style=health),
+                Text(str(deployment.updated), style=P.ANAKIWA),
+                Text(str(deployment.available), style=P.ANAKIWA),
+                Text(str(deployment.unavailable),
+                     style=P.MARS if deployment.unavailable else P.GREY),
+                Text(deployment.strategy, style=P.LILAC),
+                Text(humanize_age(deployment.created), style=P.GREY),
+                key=f"{deployment.namespace}/{deployment.name}",
             )
         self._restore(table, selected, offset)
 
@@ -438,11 +491,14 @@ class LcarsK8s(App):
     def _update_table_bar(self) -> None:
         width = self.query_one("#table-bar", Static).size.width or 80
         _, column, _ = POD_SORTS[self.sort_index]
-        titles = {"pods": "PODS", "nodes": "NODES", "events": "EVENTS"}
+        titles = {"pods": "PODS", "nodes": "NODES", "events": "EVENTS",
+                  "deployments": "DEPLOYMENTS"}
         counts = {"pods": len(self.visible_pods),
                   "nodes": len(self.visible_nodes),
-                  "events": len(self.snapshot.events) if self.snapshot else 0}
-        colour = {"pods": P.ORANGE, "nodes": P.LILAC, "events": P.TAN}[self.view]
+                  "events": len(self.snapshot.events) if self.snapshot else 0,
+                  "deployments": len(self.visible_deployments)}
+        colour = {"pods": P.ORANGE, "nodes": P.LILAC, "events": P.TAN,
+                  "deployments": P.PERIWINKLE}[self.view]
 
         value = Text()
         value.append(f"{counts[self.view]} ", style=P.TAN)
@@ -484,7 +540,7 @@ class LcarsK8s(App):
 
     # -- view plumbing ---------------------------------------------------
     def _apply_view(self) -> None:
-        for name in ("pods", "nodes", "events"):
+        for name in ("pods", "nodes", "events", "deployments"):
             self.query_one(f"#{name}", DataTable).set_class(name != self.view, "hidden")
         self.query_one(LcarsSidebar).view = self.view
         table = self.query_one(f"#{self.view}", DataTable)
@@ -503,7 +559,7 @@ class LcarsK8s(App):
             self.refresh_data()
 
     def action_cycle_view(self) -> None:
-        order = ["pods", "nodes", "events"]
+        order = ["pods", "nodes", "events", "deployments"]
         self.action_view(order[(order.index(self.view) + 1) % len(order)])
 
     def action_toggle_meters(self) -> None:
@@ -515,7 +571,7 @@ class LcarsK8s(App):
     def action_cycle_namespace(self) -> None:
         if not self.snapshot:
             return
-        options = [""] + list(self.snapshot.namespaces)
+        options = [""] + sorted(self.snapshot.namespaces, key=str.casefold)
         try:
             index = options.index(self.namespace)
         except ValueError:
@@ -532,6 +588,7 @@ class LcarsK8s(App):
         if self.snapshot:
             self._fill_pods()
             self._fill_events()
+            self._fill_deployments()
             self._update_table_bar()
 
     def on_lcars_sidebar_selected(self, message: LcarsSidebar.Selected) -> None:
@@ -604,6 +661,7 @@ class LcarsK8s(App):
                 self._fill_pods()
                 self._fill_nodes()
                 self._fill_events()
+                self._fill_deployments()
             self._update_table_bar()
             self.query_one(f"#{self.view}", DataTable).focus()
 
@@ -613,6 +671,7 @@ class LcarsK8s(App):
             self._fill_pods()
             self._fill_nodes()
             self._fill_events()
+            self._fill_deployments()
         self._update_table_bar()
 
     def on_input_submitted(self) -> None:

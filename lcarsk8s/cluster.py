@@ -160,6 +160,23 @@ class Pod:
 
 
 @dataclass
+class Deployment:
+    namespace: str
+    name: str
+    ready: int = 0
+    replicas: int = 0
+    updated: int = 0
+    available: int = 0
+    unavailable: int = 0
+    strategy: str = "RollingUpdate"
+    created: datetime | None = None
+
+    @property
+    def healthy(self) -> bool:
+        return self.ready >= self.replicas and self.unavailable == 0
+
+
+@dataclass
 class Event:
     namespace: str
     name: str
@@ -178,6 +195,7 @@ class Snapshot:
     server_version: str = "-"
     nodes: list[Node] = field(default_factory=list)
     pods: list[Pod] = field(default_factory=list)
+    deployments: list[Deployment] = field(default_factory=list)
     namespaces: list[str] = field(default_factory=list)
     events: list[Event] = field(default_factory=list)
     metrics_available: bool = False
@@ -264,6 +282,7 @@ class KubeSource:
                 ) from exc
 
         self.core = client.CoreV1Api()
+        self.apps = client.AppsV1Api()
         self.custom = client.CustomObjectsApi()
         self.version_api = client.VersionApi()
         self._server_version = "-"
@@ -328,6 +347,13 @@ class KubeSource:
             errors.append(f"pod list failed ({_brief(exc)})")
             pod_list = []
 
+        try:
+            deployment_list = self.apps.list_deployment_for_all_namespaces(
+                _request_timeout=self.timeout).items
+        except Exception as exc:
+            errors.append(f"deployment list failed ({_brief(exc)})")
+            deployment_list = []
+
         node_usage = self._node_metrics(errors)
         pod_usage = self._pod_metrics(errors)
         snap.metrics_available = bool(node_usage or pod_usage)
@@ -359,7 +385,14 @@ class KubeSource:
             snap.nodes.append(node)
 
         snap.nodes.sort(key=lambda n: n.name)
-        snap.namespaces = sorted({pod.namespace for pod in snap.pods})
+        snap.deployments = sorted(
+            (_convert_deployment(item) for item in deployment_list),
+            key=lambda deployment: (deployment.name, deployment.namespace),
+        )
+        snap.namespaces = sorted(
+            {pod.namespace for pod in snap.pods}
+            | {deployment.namespace for deployment in snap.deployments}
+        )
 
         if want_events:
             try:
@@ -513,6 +546,22 @@ def _convert_pod(raw, usage: dict[str, tuple[float, float]]) -> Pod:
     )
 
 
+def _convert_deployment(raw) -> Deployment:
+    meta, spec, status = raw.metadata, raw.spec, raw.status
+    strategy = spec.strategy.type if spec and spec.strategy else "RollingUpdate"
+    return Deployment(
+        namespace=meta.namespace or "-",
+        name=meta.name or "-",
+        ready=(status.ready_replicas if status else 0) or 0,
+        replicas=(spec.replicas if spec else 0) or 0,
+        updated=(status.updated_replicas if status else 0) or 0,
+        available=(status.available_replicas if status else 0) or 0,
+        unavailable=(status.unavailable_replicas if status else 0) or 0,
+        strategy=strategy,
+        created=meta.creation_timestamp,
+    )
+
+
 def _convert_event(raw) -> Event:
     involved = raw.involved_object
     last = raw.last_timestamp or raw.event_time or raw.first_timestamp
@@ -590,6 +639,22 @@ class DemoSource:
         for pod in self.random.sample(self._pods, 2):
             pod.status, pod.ready, pod.ready_fraction = "Pending", "0/1", 0.0
             pod.node = ""
+        self._deployments = []
+        for namespace, apps in self.APPS.items():
+            for app in apps:
+                replicas = sum(
+                    1 for pod in self._pods
+                    if pod.namespace == namespace and pod.name.startswith(f"{app}-")
+                )
+                self._deployments.append(Deployment(
+                    namespace=namespace,
+                    name=app,
+                    ready=replicas,
+                    replicas=replicas,
+                    updated=replicas,
+                    available=replicas,
+                    created=datetime.now(timezone.utc),
+                ))
         self._birth = time.time()
 
     def snapshot(self, want_events: bool = False) -> Snapshot:
@@ -625,7 +690,24 @@ class DemoSource:
                 by_name[pod.node].pod_count += 1
             snap.pods.append(pod)
 
-        snap.namespaces = sorted({pod.namespace for pod in snap.pods})
+        for deployment in self._deployments:
+            pods = [pod for pod in self._pods
+                    if pod.namespace == deployment.namespace
+                    and pod.name.startswith(f"{deployment.name}-")]
+            deployment.ready = sum(1 for pod in pods if pod.healthy)
+            deployment.updated = len(pods)
+            deployment.available = deployment.ready
+            deployment.unavailable = max(0, deployment.replicas - deployment.ready)
+            deployment.created = datetime.fromtimestamp(
+                self.started - hash(deployment.name) % 900000, timezone.utc)
+            snap.deployments.append(deployment)
+        snap.deployments.sort(
+            key=lambda deployment: (deployment.name, deployment.namespace))
+
+        snap.namespaces = sorted(
+            {pod.namespace for pod in snap.pods}
+            | {deployment.namespace for deployment in snap.deployments}
+        )
         if want_events:
             reasons = [("Warning", "BackOff"), ("Normal", "Scheduled"),
                        ("Normal", "Pulled"), ("Warning", "FailedMount"),

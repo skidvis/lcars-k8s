@@ -173,7 +173,7 @@ class LcarsSidebar(Widget):
     NAV = (("pods", "02  PODS", P.ORANGE),
            ("nodes", "03  NODES", P.LILAC),
            ("events", "04  EVENTS", P.TAN),
-           ("help", "?  HELP", P.PERIWINKLE))
+           ("deployments", "05  DEPLOYMENTS", P.PERIWINKLE))
 
     class Selected(Message):
         def __init__(self, kind: str, value: str) -> None:
@@ -181,8 +181,9 @@ class LcarsSidebar(Widget):
             self.value = value
             super().__init__()
 
-    def __init__(self) -> None:
+    def __init__(self, side: str = "left") -> None:
         super().__init__()
+        self.side = side
         self._hitmap: dict[int, tuple[str, str]] = {}
 
     def on_resize(self) -> None:
@@ -199,8 +200,10 @@ class LcarsSidebar(Widget):
         hits: dict[int, tuple[str, str]] = {}
 
         rows.append(Text(" " * width))
+        align = "right" if self.side == "left" else "left"
         for key, label, colour in self.NAV:
-            block = G.pill(label, width, colour, height=2, active=(self.view == key))
+            block = G.pill(label, width, colour, height=2, align=align,
+                           active=(self.view == key))
             for offset in range(len(block)):
                 hits[len(rows) + offset] = ("view", key)
             rows.extend(block)
@@ -215,13 +218,15 @@ class LcarsSidebar(Widget):
         for value, label in entries[:max(0, remaining)]:
             selected = self.namespace == value
             colour = P.ANAKIWA if selected else P.GREY
-            row = G.pill(label, width, colour, height=1, align="right",
+            row = G.pill(label, width, colour, height=1, align=align,
                          text_colour=P.BLACK if selected else "#0A0A12")[0]
             hits[len(rows)] = ("namespace", value)
             rows.append(row)
         if len(entries) > max(0, remaining):
             hidden = len(entries) - max(0, remaining)
-            rows.append(Text(f"+{hidden} MORE".rjust(width), style=P.GREY))
+            message = f"+{hidden} MORE"
+            rows.append(Text(message.rjust(width) if self.side == "left"
+                             else message.ljust(width), style=P.GREY))
 
         while len(rows) < height - 4:
             rows.append(Text(" " * width))

@@ -23,8 +23,10 @@ def build_parser() -> argparse.ArgumentParser:
                         help="start filtered to one namespace")
     parser.add_argument("-i", "--interval", type=float, default=2.0,
                         help="seconds between scans (default: 2)")
-    parser.add_argument("--view", choices=("pods", "nodes", "events"), default="pods",
-                        help="view to open on (default: pods)")
+    parser.add_argument(
+        "--view",
+        choices=("pods", "nodes", "events", "deployments", "2", "3", "4", "5"),
+        default="pods", help="view to open on (default: pods)")
     parser.add_argument("--timeout", type=int, default=10,
                         help="apiserver request timeout in seconds (default: 10)")
     display = parser.add_argument_group("display")
@@ -48,6 +50,9 @@ def build_parser() -> argparse.ArgumentParser:
         "--resolution", metavar="WIDTHxHEIGHT",
         help="graphical output resolution (default: current display)")
     display.add_argument(
+        "--sidebar", choices=("left", "right"), default="left",
+        help="place the navigation sidebar on the left or right (default: left)")
+    display.add_argument(
         "--colors", "--colours", dest="colors",
         choices=("auto", "full", "console"), default="auto",
         help="'full' uses the 24-bit LCARS palette; 'console' picks 16-colour "
@@ -66,6 +71,8 @@ def build_parser() -> argparse.ArgumentParser:
 def main(argv: list[str] | None = None) -> int:
     raw_args = list(argv) if argv is not None else sys.argv[1:]
     args = build_parser().parse_args(raw_args)
+    args.view = {"2": "pods", "3": "nodes", "4": "events",
+                 "5": "deployments"}.get(args.view, args.view)
 
     if args.kmscon:
         os.environ["TERM"] = "xterm-256color"
@@ -137,7 +144,8 @@ def main(argv: list[str] | None = None) -> int:
             return LcarsGraphics(
                 source, interval=max(0.5, args.interval),
                 namespace=args.namespace, view=args.view,
-                windowed=args.windowed, resolution=resolution).run()
+                windowed=args.windowed, resolution=resolution,
+                sidebar=args.sidebar).run()
         except Exception as error:
             print(f"lcars-k8s: graphical display failed: {error}", file=sys.stderr)
             print("Switch away from Kmscon before direct KMS/DRM mode, or use "
@@ -147,7 +155,8 @@ def main(argv: list[str] | None = None) -> int:
     from .app import LcarsK8s
 
     app = LcarsK8s(source, interval=max(0.5, args.interval),
-                   namespace=args.namespace, view=args.view)
+                   namespace=args.namespace, view=args.view,
+                   sidebar=args.sidebar)
     app.run()
     return 0
 

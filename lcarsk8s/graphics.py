@@ -47,7 +47,8 @@ SORTS = (
 class LcarsGraphics:
     def __init__(self, source, interval: float = 2.0, namespace: str = "",
                  view: str = "pods", windowed: bool = False,
-                 resolution: tuple[int, int] | None = None) -> None:
+                 resolution: tuple[int, int] | None = None,
+                 sidebar: str = "left") -> None:
         pygame.display.init()
         pygame.font.init()
         flags = pygame.RESIZABLE if windowed else pygame.FULLSCREEN
@@ -67,6 +68,7 @@ class LcarsGraphics:
         self.interval = interval
         self.namespace = namespace
         self.view = view
+        self.sidebar_side = sidebar
         self.snapshot: Snapshot | None = None
         self.history_cpu: list[float] = []
         self.history_mem: list[float] = []
@@ -74,8 +76,8 @@ class LcarsGraphics:
         self.show_graphs = True
         self.filter_text = ""
         self.filtering = False
-        self.sort_index = 0
-        self.sort_reverse = True
+        self.sort_index = 5
+        self.sort_reverse = False
         self.selected = 0
         self.scroll = 0
         self.status = "INITIALIZING SENSOR ARRAY"
@@ -204,13 +206,14 @@ class LcarsGraphics:
             self.running = False
         elif key == pygame.K_1:
             self.show_graphs = not self.show_graphs
-        elif key in (pygame.K_2, pygame.K_3, pygame.K_4):
-            self.view = {pygame.K_2: "pods", pygame.K_3: "nodes", pygame.K_4: "events"}[key]
+        elif key in (pygame.K_2, pygame.K_3, pygame.K_4, pygame.K_5):
+            self.view = {pygame.K_2: "pods", pygame.K_3: "nodes",
+                         pygame.K_4: "events", pygame.K_5: "deployments"}[key]
             self.selected = 0
             self.scroll = 0
             self._start_poll()
         elif key == pygame.K_TAB:
-            order = ("pods", "nodes", "events")
+            order = ("pods", "nodes", "events", "deployments")
             self.view = order[(order.index(self.view) + 1) % len(order)]
             self.selected = 0
             self.scroll = 0
@@ -267,7 +270,7 @@ class LcarsGraphics:
         self.modal_title = "OPERATIONS MANUAL"
         self.modal_text = [
             "1                 SHOW OR HIDE CLUSTER GRAPHS",
-            "2 / 3 / 4         PODS / NODES / EVENTS",
+            "2 / 3 / 4 / 5     PODS / NODES / EVENTS / DEPLOYMENTS",
             "TAB               CYCLE VIEWS",
             "N / A             NEXT NAMESPACE / ALL NAMESPACES",
             "/ OR F            FILTER CURRENT VIEW",
@@ -286,7 +289,8 @@ class LcarsGraphics:
         self.modal = "text"
 
     def _cycle_namespace(self) -> None:
-        options = [""] + (self.snapshot.namespaces if self.snapshot else [])
+        options = [""] + (sorted(self.snapshot.namespaces, key=str.casefold)
+                           if self.snapshot else [])
         try:
             index = options.index(self.namespace)
         except ValueError:
@@ -388,8 +392,19 @@ class LcarsGraphics:
             return self._pod_rows()
         needle = self.filter_text.lower()
         if self.view == "nodes":
-            return [node for node in self.snapshot.nodes if not needle or needle in
-                    f"{node.name} {node.roles} {node.condition}".lower()]
+            nodes = [node for node in self.snapshot.nodes if not needle or needle in
+                     f"{node.name} {node.roles} {node.condition}".lower()]
+            return sorted(nodes, key=lambda node: node.name.casefold())
+        if self.view == "deployments":
+            deployments = [deployment for deployment in self.snapshot.deployments
+                           if (not self.namespace or
+                               deployment.namespace == self.namespace)
+                           and (not needle or needle in
+                                f"{deployment.namespace} {deployment.name} "
+                                f"{deployment.strategy}".lower())]
+            return sorted(deployments,
+                          key=lambda deployment: (deployment.name.casefold(),
+                                                  deployment.namespace.casefold()))
         return [event for event in self.snapshot.events
                 if (not self.namespace or event.namespace == self.namespace)
                 and (not needle or needle in
@@ -413,50 +428,76 @@ class LcarsGraphics:
         if self.modal:
             self._modal()
 
+    def _main_x(self, x: int) -> int:
+        return x if self.sidebar_side == "left" else x - 316
+
     def _frame(self) -> None:
-        pygame.draw.rect(self.canvas, PEACH, (24, 24, 260, 130))
+        right = self.sidebar_side == "right"
         pygame.draw.rect(self.canvas, ORANGE, (24, 24, 1872, 48), border_radius=24)
-        pygame.draw.rect(self.canvas, ORANGE, (24, 24, 40, 48))
-        pygame.draw.circle(self.canvas, PEACH, (284, 72), 48)
-        pygame.draw.circle(self.canvas, BLACK, (332, 120), 48)
-        self._text("KUBERNETES OPERATIONS", 365, 32, BLACK, "title")
-        self._text("47-1701", 55, 92, BLACK, "label")
+        if right:
+            pygame.draw.rect(self.canvas, PEACH, (1636, 24, 260, 130))
+            pygame.draw.rect(self.canvas, ORANGE, (1856, 24, 40, 48))
+            pygame.draw.circle(self.canvas, PEACH, (1636, 72), 48)
+            pygame.draw.circle(self.canvas, BLACK, (1588, 120), 48)
+            self._text("47-1701", 1865, 92, BLACK, "label", "right")
+        else:
+            pygame.draw.rect(self.canvas, PEACH, (24, 24, 260, 130))
+            pygame.draw.rect(self.canvas, ORANGE, (24, 24, 40, 48))
+            pygame.draw.circle(self.canvas, PEACH, (284, 72), 48)
+            pygame.draw.circle(self.canvas, BLACK, (332, 120), 48)
+            self._text("47-1701", 55, 92, BLACK, "label")
+        main_start = self._main_x(365)
+        main_end = self._main_x(1870)
+        self._text("KUBERNETES OPERATIONS", main_start, 32, BLACK, "title")
         context = self.snapshot.context if self.snapshot else getattr(self.source, "context", self.source.name)
         version = self.snapshot.server_version if self.snapshot else "SCANNING"
-        self._text(context.upper(), 365, 92, TAN, "label")
-        self._text(version.upper(), 1870, 92, ICE, "label", "right")
-        self._text(f"STARDATE {stardate()}", 1870, 127, LILAC, "small", "right")
-        self._scanner_rail(365, 76, 1531, 10, ORANGE, 0.0)
+        self._text(context.upper(), main_start, 92, TAN, "label")
+        self._text(version.upper(), main_end, 92, ICE, "label", "right")
+        self._text(f"STARDATE {stardate()}", main_end, 127, LILAC, "small", "right")
+        self._scanner_rail(main_start, 76, 1531, 10, ORANGE, 0.0)
         nav = (("02", "PODS", ORANGE), ("03", "NODES", LILAC),
-               ("04", "EVENTS", TAN), ("?", "HELP", PERIWINKLE))
+               ("04", "EVENTS", TAN), ("05", "DEPLOYMENTS", PERIWINKLE))
         y = 190
         for key, label, color in nav:
             active = self.view == label.lower()
             width = 280 if active else 238
-            pygame.draw.rect(self.canvas, color, (24, y, width, 62), border_radius=30)
-            pygame.draw.rect(self.canvas, color, (24, y, 45, 62))
-            self._text(f"{key}  {label}", 50, y + 16, BLACK, "label")
+            x = W - 24 - width if right else 24
+            pygame.draw.rect(self.canvas, color, (x, y, width, 62), border_radius=30)
+            edge_x = x + width - 45 if right else x
+            pygame.draw.rect(self.canvas, color, (edge_x, y, 45, 62))
+            text_x = x + width - 26 if right else x + 26
+            align = "right" if right else "left"
+            self._text(f"{key}  {label}", text_x, y + 16, BLACK, "label", align)
             y += 82
-        pygame.draw.rect(self.canvas, ORANGE, (24, y + 8, 238, 44), border_radius=22)
-        pygame.draw.rect(self.canvas, ORANGE, (24, y + 8, 38, 44))
-        self._text("NAMESPACE", 50, y + 17, BLACK, "small")
+        x = W - 24 - 238 if right else 24
+        pygame.draw.rect(self.canvas, ORANGE, (x, y + 8, 238, 44), border_radius=22)
+        edge_x = x + 200 if right else x
+        pygame.draw.rect(self.canvas, ORANGE, (edge_x, y + 8, 38, 44))
+        text_x = x + 212 if right else x + 26
+        align = "right" if right else "left"
+        self._text("NAMESPACE", text_x, y + 17, BLACK, "small", align)
         y += 70
+        namespace_names = (sorted(self.snapshot.namespaces, key=str.casefold)
+                           if self.snapshot else [])
         namespaces = [("", "ALL")] + [
-            (name, name.upper()) for name in (self.snapshot.namespaces if self.snapshot else [])]
+            (name, name.upper()) for name in namespace_names]
         for value, label in namespaces[:8]:
             selected = self.namespace == value
             if selected:
-                pygame.draw.rect(self.canvas, ICE, (24, y, 238, 34), border_radius=17)
-                pygame.draw.rect(self.canvas, ICE, (24, y, 25, 34))
-            self._text(label, 245, y + 5, BLACK if selected else TAN,
-                       "small", "right")
+                pygame.draw.rect(self.canvas, ICE, (x, y, 238, 34), border_radius=17)
+                edge_x = x + 213 if right else x
+                pygame.draw.rect(self.canvas, ICE, (edge_x, y, 25, 34))
+            text_x = x + 17 if right else x + 221
+            align = "left" if right else "right"
+            self._text(label, text_x, y + 5, BLACK if selected else TAN,
+                       "small", align)
             y += 38
 
     def _telemetry(self) -> None:
-        self._graph_panel(340, 205, 735, 205, "CLUSTER CPU", "31-882",
+        self._graph_panel(self._main_x(340), 205, 735, 205, "CLUSTER CPU", "31-882",
                           self.history_cpu, self.snapshot.cpu_fraction if self.snapshot else 0,
                           ORANGE, "cpu")
-        self._graph_panel(1110, 205, 786, 205, "CLUSTER MEMORY", "44-119",
+        self._graph_panel(self._main_x(1110), 205, 786, 205, "CLUSTER MEMORY", "44-119",
                           self.history_mem, self.snapshot.mem_fraction if self.snapshot else 0,
                           LILAC, "mem")
 
@@ -512,7 +553,7 @@ class LcarsGraphics:
 
     def _stats(self, y: int) -> None:
         if self.snapshot is None:
-            self._text("AWAITING TELEMETRY", 340, y + 10, GREY, "label")
+            self._text("AWAITING TELEMETRY", self._main_x(340), y + 10, GREY, "label")
             return
         counts = self.snapshot.counts()
         ready = sum(1 for node in self.snapshot.nodes if node.ready)
@@ -523,7 +564,7 @@ class LcarsGraphics:
                  ("PEND", str(counts["pending"]), GOLD),
                  ("FAIL", str(counts["failed"]), MARS if counts["failed"] else GREY),
                  ("RESTARTS", str(restarts), LILAC))
-        x = 365
+        x = self._main_x(365)
         for label, value, color in cells:
             label_surface = self.fonts["small"].render(label, True, BLACK)
             box_width = label_surface.get_width() + 28
@@ -533,10 +574,11 @@ class LcarsGraphics:
             x += box_width + self.fonts["small"].size(value)[0] + 38
 
     def _table(self, y: int) -> None:
-        x, width = 340, 1556
+        x, width = self._main_x(340), 1556
         rows = self._rows()
         title = self.view.upper()
-        color = {"pods": ORANGE, "nodes": LILAC, "events": TAN}[self.view]
+        color = {"pods": ORANGE, "nodes": LILAC, "events": TAN,
+                 "deployments": PERIWINKLE}[self.view]
         pygame.draw.rect(self.canvas, color, (x, y, width, 42), border_radius=21)
         self._text(title, x + 22, y + 8, BLACK, "label")
         right = f"{len(rows)} SHOWN"
@@ -555,6 +597,11 @@ class LcarsGraphics:
             columns = (("NODE", 18), ("STATUS", 360), ("ROLES", 520),
                        ("CPU", 760), ("MEMORY", 1030), ("PODS", 1260),
                        ("VERSION", 1370), ("AGE", 1490))
+        elif self.view == "deployments":
+            columns = (("NS", 18), ("DEPLOYMENT", 190), ("READY", 730),
+                       ("UP-TO-DATE", 860), ("AVAILABLE", 1050),
+                       ("UNAVAILABLE", 1220), ("STRATEGY", 1400),
+                       ("AGE", 1510))
         else:
             columns = (("AGE", 18), ("TYPE", 120), ("REASON", 240),
                        ("NS", 500), ("OBJECT", 700), ("N", 1040),
@@ -596,6 +643,15 @@ class LcarsGraphics:
                       (f"{item.mem_fraction * 100:.0f}%", 1030, self._load_color(item.mem_fraction)),
                       (f"{item.pod_count}/{item.pod_capacity}", 1260, TAN),
                       (item.version, 1370, GREY), (humanize_age(item.created), 1490, GREY))
+        elif self.view == "deployments":
+            health = ICE if item.healthy else MARS
+            values = ((item.namespace, 18, PERIWINKLE), (item.name, 190, fg),
+                      (f"{item.ready}/{item.replicas}", 730, health),
+                      (str(item.updated), 860, ICE),
+                      (str(item.available), 1050, ICE),
+                      (str(item.unavailable), 1220, MARS if item.unavailable else GREY),
+                      (item.strategy, 1400, LILAC),
+                      (humanize_age(item.created), 1510, GREY))
         else:
             warning = item.type != "Normal"
             values = ((humanize_age(item.last), 18, GREY), (item.type, 120, MARS if warning else ICE),
@@ -615,20 +671,27 @@ class LcarsGraphics:
             y = 184 + index * 48
             value = (phase * 17 + index * 31) % 100
             color = colors[(phase // 2 + index) % len(colors)]
-            self._text(f"{value:02}", 332, y, color, "label", "right")
+            if self.sidebar_side == "right":
+                self._text(f"{value:02}", 1588, y, color, "label")
+            else:
+                self._text(f"{value:02}", 332, y, color, "label", "right")
 
     def _footer(self) -> None:
-        self._scanner_rail(340, 998, 1556, 9, LILAC, 0.55)
-        pygame.draw.rect(self.canvas, LILAC, (24, 1012, 260, 44))
+        right = self.sidebar_side == "right"
+        self._scanner_rail(self._main_x(340), 998, 1556, 9, LILAC, 0.55)
+        footer_x = 1636 if right else 24
+        pygame.draw.rect(self.canvas, LILAC, (footer_x, 1012, 260, 44))
         pygame.draw.rect(self.canvas, self.status_color, (24, 1036, 1872, 28), border_radius=14)
-        pygame.draw.rect(self.canvas, self.status_color, (24, 1036, 40, 28))
-        legend = "2-4 VIEW   N NAMESPACE   / FILTER   <> SORT   R REVERSE   L LOGS   D DETAIL   X DELETE   SPACE HOLD   Q QUIT"
-        self._text(legend, 340, 1018, TAN, "tiny")
+        edge_x = 1856 if right else 24
+        pygame.draw.rect(self.canvas, self.status_color, (edge_x, 1036, 40, 28))
+        legend = "2-5 VIEW   N NAMESPACE   / FILTER   <> SORT   R REVERSE   L LOGS   D DETAIL   X DELETE   SPACE HOLD   ? HELP   Q QUIT"
+        self._text(legend, self._main_x(340), 1018, TAN, "tiny")
         light = int(self.motion_time * 2.68) % 3
         for index in range(3):
             color = self.status_color if index == light else shade_color(self.status_color, 0.28)
-            pygame.draw.circle(self.canvas, color, (310 + index * 13, 1050), 4)
-        self._text(self.status, 1870, 1041, BLACK, "small", "right")
+            light_x = 1610 - index * 13 if right else 310 + index * 13
+            pygame.draw.circle(self.canvas, color, (light_x, 1050), 4)
+        self._text(self.status, self._main_x(1870), 1041, BLACK, "small", "right")
 
     def _scanner_rail(self, x: int, y: int, width: int, height: int,
                       color: tuple[int, int, int], offset: float) -> None:

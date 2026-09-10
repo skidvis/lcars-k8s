@@ -5,8 +5,8 @@ lcars-k8s is a Kubernetes operations dashboard with two interfaces:
 - A pixel-rendered LCARS dashboard for a local display
 - A responsive Textual terminal interface for SSH, Kmscon, FbTerm, and ordinary terminals
 
-It displays cluster CPU and memory history, node utilization, pods, events,
-container logs, pod details, and Kubernetes manifests. It can also delete a
+It displays cluster CPU and memory history, node utilization, pods, deployments,
+events, container logs, pod details, and Kubernetes manifests. It can also delete a
 selected pod after confirmation.
 
 ![Pixel-rendered LCARS dashboard](preview-graphics.png)
@@ -169,6 +169,7 @@ The active Kubernetes identity needs these permissions:
 | pods | get, list | pod status, details, and manifests |
 | pods/log | get | container logs |
 | events | get, list | event view |
+| deployments.apps | get, list | deployment readiness and rollout status |
 | namespaces | get, list | namespace selection |
 | metrics.k8s.io nodes and pods | get, list | live CPU and memory usage |
 | pods | delete | optional pod deletion |
@@ -180,6 +181,7 @@ kubectl auth can-i list nodes
 kubectl auth can-i list pods --all-namespaces
 kubectl auth can-i get pods/log --all-namespaces
 kubectl auth can-i list events --all-namespaces
+kubectl auth can-i list deployments.apps --all-namespaces
 kubectl auth can-i list nodes.metrics.k8s.io
 kubectl auth can-i delete pods --all-namespaces
 ```
@@ -435,6 +437,7 @@ Do not set `COLORTERM=truecolor` for FbTerm.
 | `2` | open pods |
 | `3` | open nodes |
 | `4` | open events |
+| `5` | open deployments |
 | `Tab` | cycle through views |
 | `n` | select the next namespace |
 | `a` | show all namespaces |
@@ -475,14 +478,16 @@ lcars-k8s [options]
 | `--context NAME` | use a specific kubeconfig context |
 | `-n NAME`, `--namespace NAME` | start in one namespace |
 | `-i SECONDS`, `--interval SECONDS` | set the scan interval, default 2 seconds, minimum 0.5 |
-| `--view pods` | start in the pods view |
-| `--view nodes` | start in the nodes view |
-| `--view events` | start in the events view |
+| `--view pods` or `--view 2` | start in the pods view |
+| `--view nodes` or `--view 3` | start in the nodes view |
+| `--view events` or `--view 4` | start in the events view |
+| `--view deployments` or `--view 5` | start in the deployments view |
 | `--timeout SECONDS` | set the API request timeout, default 10 seconds |
 | `--graphics` | use the pixel-rendered SDL interface |
 | `--windowed` | use a resizable desktop window with graphical mode |
 | `--direct-kms` | use SDL KMSDRM instead of the Xorg kiosk |
 | `--resolution WIDTHxHEIGHT` | set graphical output resolution |
+| `--sidebar left` or `--sidebar right` | place navigation on either side |
 | `--kmscon` | use the Kmscon terminal profile |
 | `--fbterm` | use the FbTerm terminal profile |
 | `--colors auto` | detect the terminal color mode |
