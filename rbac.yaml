@@ -1,7 +1,4 @@
-# Minimum permissions lcars-k8s needs.
-#
-# Drop the "delete" verb on pods if you want a strictly read-only console;
-# the x key will then report a permission error instead of removing anything.
+# Minimum read-only permissions lcars-k8s needs.
 #
 #   kubectl apply -f rbac.yaml
 #   kubectl create token lcars-k8s -n kube-system --duration 8h
@@ -26,9 +23,6 @@ rules:
   - apiGroups: [""]
     resources: ["pods/log"]
     verbs: ["get"]
-  - apiGroups: [""]
-    resources: ["pods"]
-    verbs: ["delete"]
   - apiGroups: ["metrics.k8s.io"]
     resources: ["nodes", "pods"]
     verbs: ["get", "list"]

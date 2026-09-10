@@ -1,4 +1,4 @@
-"""Modal screens: help, log tail, pod detail, delete confirmation."""
+"""Modal screens: help, log tail, and pod detail."""
 
 from __future__ import annotations
 
@@ -176,7 +176,6 @@ class HelpScreen(LcarsModal):
         ("POD ACTIONS", (
             ("l", "tail the container log"),
             ("d", "pod detail and manifest"),
-            ("x or DEL", "delete the pod, with confirmation"),
         )),
         ("SCANNING", (
             ("SPACE", "hold and resume polling"),
@@ -203,53 +202,6 @@ class HelpScreen(LcarsModal):
         body.append("  quiet to saturated.\n", style=P.GREY)
         with VerticalScroll(id="frame-body"):
             yield Static(body)
-
-
-# --------------------------------------------------------------------------
-class ConfirmScreen(LcarsModal):
-    """Delete confirmation. Nothing is destroyed without passing through here."""
-
-    CSS = MODAL_CSS + """
-    #frame { width: 72; height: 13; }
-    """
-    BINDINGS = [
-        Binding("escape", "no", "Cancel", show=False),
-        Binding("n", "no", "Cancel", show=False),
-        Binding("q", "no", "Cancel", show=False),
-        Binding("y", "yes", "Delete", show=False),
-        Binding("enter", "yes", "Delete", show=False),
-    ]
-    panel_title = "CONFIRM DELETE"
-    code = "99-DEL"
-    colour = P.MARS
-    hints = (("Y", "DELETE"), ("N", "CANCEL"))
-
-    def __init__(self, pod: Pod) -> None:
-        super().__init__()
-        self.pod = pod
-
-    def compose_body(self) -> ComposeResult:
-        body = Text()
-        body.append("\n Delete this pod?\n\n", style=Style(color=P.TAN, bold=True))
-        body.append("   ")
-        body.append(self.pod.namespace, style=P.PERIWINKLE)
-        body.append(" / ", style=P.GREY)
-        body.append(self.pod.name, style=P.SUNFLOWER)
-        body.append("\n\n   ")
-        if self.pod.owner:
-            body.append(f"{self.pod.owner} will recreate it.\n", style=P.GREY)
-        else:
-            body.append("Nothing owns it — it will not come back.\n", style=P.MARS)
-        yield Static(body, id="frame-body")
-
-    def action_yes(self) -> None:
-        self.dismiss(True)
-
-    def action_no(self) -> None:
-        self.dismiss(False)
-
-    def action_dismiss_screen(self) -> None:
-        self.dismiss(False)
 
 
 # --------------------------------------------------------------------------

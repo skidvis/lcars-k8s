@@ -18,7 +18,7 @@ from . import glyphs as G
 from . import palette as P
 from .cluster import (ClusterError, Snapshot, humanize_age, humanize_bytes,
                       humanize_cpu)
-from .screens import ConfirmScreen, DetailScreen, HelpScreen, LogScreen
+from .screens import DetailScreen, HelpScreen, LogScreen
 from .widgets import (ARM, LcarsFooter, LcarsHeader, LcarsSidebar, LoadPanel,
                       StatStrip, node_meter_rows)
 
@@ -64,7 +64,7 @@ POD_SORTS = (
 )
 
 KEY_LEGEND = ("2-5:view  n:ns  /:filter  <>:sort  r:rev  l:logs  d:detail  "
-              "x:delete  space:hold  ?:help  q:quit")
+              "space:hold  ?:help  q:quit")
 
 
 class LcarsK8s(App):
@@ -131,8 +131,6 @@ class LcarsK8s(App):
         Binding("r", "reverse", "Reverse", show=False),
         Binding("l", "logs", "Logs", show=False),
         Binding("d", "detail", "Detail", show=False),
-        Binding("x", "delete", "Delete", show=False),
-        Binding("delete", "delete", "Delete", show=False),
         Binding("space", "pause", "Hold", show=False),
         Binding("plus", "interval(1)", "Slower", show=False),
         Binding("equals_sign", "interval(1)", "Slower", show=False),
@@ -700,29 +698,6 @@ class LcarsK8s(App):
         pod = self._current_pod()
         if pod:
             self.push_screen(DetailScreen(self.source, pod))
-
-    def action_delete(self) -> None:
-        pod = self._current_pod()
-        if not pod:
-            return
-
-        def finish(confirmed: bool | None) -> None:
-            if not confirmed:
-                self.set_status("DELETE ABORTED", P.GREY)
-                return
-            self._delete_pod(pod.namespace, pod.name)
-
-        self.push_screen(ConfirmScreen(pod), finish)
-
-    @work(thread=True)
-    def _delete_pod(self, namespace: str, name: str) -> None:
-        try:
-            message = self.source.delete_pod(namespace, name)
-            self.call_from_thread(self.set_status, message, P.LILAC)
-        except Exception as error:  # noqa: BLE001
-            self.call_from_thread(self.set_status,
-                                  f"DELETE FAILED · {error.__class__.__name__}", P.MARS)
-        self.call_from_thread(self.refresh_data)
 
     def action_help(self) -> None:
         self.push_screen(HelpScreen())

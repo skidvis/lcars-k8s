@@ -409,12 +409,6 @@ class KubeSource:
         return snap
 
     # -- actions ---------------------------------------------------------
-    def delete_pod(self, namespace: str, name: str, grace: int | None = None) -> str:
-        body = self._client.V1DeleteOptions(grace_period_seconds=grace) if grace is not None else None
-        self.core.delete_namespaced_pod(name=name, namespace=namespace, body=body,
-                                        _request_timeout=self.timeout)
-        return f"DELETE ISSUED · {namespace}/{name}"
-
     def pod_logs(self, namespace: str, name: str, container: str | None = None,
                  tail: int = 400, previous: bool = False) -> str:
         return self.core.read_namespaced_pod_log(
@@ -723,13 +717,6 @@ class DemoSource:
                     last=datetime.fromtimestamp(time.time() - index * 37, timezone.utc),
                 ))
         return snap
-
-    def delete_pod(self, namespace: str, name: str, grace: int | None = None) -> str:
-        for index, pod in enumerate(self._pods):
-            if pod.namespace == namespace and pod.name == name:
-                pod.status = "Terminating"
-                return f"DELETE SIMULATED · {namespace}/{name}"
-        return "POD NOT FOUND"
 
     def pod_logs(self, namespace: str, name: str, container: str | None = None,
                  tail: int = 400, previous: bool = False) -> str:

@@ -188,12 +188,6 @@ class LcarsGraphics:
             self.selected = 0
             self.scroll = 0
             return
-        if self.modal == "confirm":
-            if key in (pygame.K_y, pygame.K_RETURN):
-                self._confirm_delete()
-            elif key in (pygame.K_n, pygame.K_ESCAPE, pygame.K_q):
-                self.modal = ""
-            return
         if self.modal:
             if key in (pygame.K_ESCAPE, pygame.K_q):
                 self.modal = ""
@@ -261,8 +255,6 @@ class LcarsGraphics:
             self._detail()
         elif key == pygame.K_l:
             self._logs()
-        elif key in (pygame.K_x, pygame.K_DELETE):
-            self._delete()
         elif key == pygame.K_F5:
             self._start_poll()
 
@@ -279,7 +271,6 @@ class LcarsGraphics:
             "UP / DOWN         MOVE SELECTION",
             "L                 OPEN CONTAINER LOG",
             "D                 OPEN POD DETAIL AND MANIFEST",
-            "X OR DELETE       DELETE POD WITH CONFIRMATION",
             "SPACE             HOLD OR RESUME SCANNING",
             "+ / -             CHANGE SCAN INTERVAL",
             "CTRL+R OR F5      SCAN NOW",
@@ -350,29 +341,6 @@ class LcarsGraphics:
         container = pod.containers[0] if pod.containers else None
         self.action_future = self.executor.submit(
             self.source.pod_logs, pod.namespace, pod.name, container, 500, False)
-
-    def _delete(self) -> None:
-        pod = self._current_pod()
-        if pod is None:
-            self.status = "SELECT A POD FIRST"
-            self.status_color = GOLD
-            return
-        self.modal_title = "CONFIRM POD DELETE"
-        self.modal_text = [f"{pod.namespace}/{pod.name}",
-                           pod.owner or "UNOWNED POD WILL NOT RETURN",
-                           "PRESS Y TO DELETE OR N TO CANCEL"]
-        self.scroll = 0
-        self.modal = "confirm"
-
-    def _confirm_delete(self) -> None:
-        pod = self._current_pod()
-        if pod is None or self.action_future is not None:
-            self.modal = ""
-            return
-        self.modal_text = ["DELETE COMMAND TRANSMITTED"]
-        self.action_kind = "delete"
-        self.action_future = self.executor.submit(
-            self.source.delete_pod, pod.namespace, pod.name)
 
     def _pod_rows(self):
         if self.snapshot is None:
@@ -684,7 +652,7 @@ class LcarsGraphics:
         pygame.draw.rect(self.canvas, self.status_color, (24, 1036, 1872, 28), border_radius=14)
         edge_x = 1856 if right else 24
         pygame.draw.rect(self.canvas, self.status_color, (edge_x, 1036, 40, 28))
-        legend = "2-5 VIEW   N NAMESPACE   / FILTER   <> SORT   R REVERSE   L LOGS   D DETAIL   X DELETE   SPACE HOLD   ? HELP   Q QUIT"
+        legend = "2-5 VIEW   N NAMESPACE   / FILTER   <> SORT   R REVERSE   L LOGS   D DETAIL   SPACE HOLD   ? HELP   Q QUIT"
         self._text(legend, self._main_x(340), 1018, TAN, "tiny")
         light = int(self.motion_time * 2.68) % 3
         for index in range(3):
@@ -717,7 +685,7 @@ class LcarsGraphics:
         shade.fill((0, 0, 0, 205))
         self.canvas.blit(shade, (0, 0))
         rect = pygame.Rect(245, 125, 1430, 820)
-        color = MARS if self.modal == "confirm" else ICE
+        color = ICE
         pygame.draw.rect(self.canvas, PANEL, rect, border_radius=34)
         pygame.draw.rect(self.canvas, color, rect, width=6, border_radius=34)
         pygame.draw.rect(self.canvas, color, (rect.x, rect.y, 190, rect.height),
@@ -729,9 +697,8 @@ class LcarsGraphics:
         visible = self.modal_text[self.scroll:self.scroll + 29]
         for index, line in enumerate(visible):
             self._text_clip(line, body_x, body_y + index * 24,
-                            MARS if self.modal == "confirm" and index == 0 else TAN,
-                            "small", rect.width - 270)
-        hint = "Y DELETE   N CANCEL" if self.modal == "confirm" else "ESC CLOSE   ↑↓ SCROLL"
+                            TAN, "small", rect.width - 270)
+        hint = "ESC CLOSE   ↑↓ SCROLL"
         self._text(hint, rect.right - 30, rect.bottom - 42, color, "small", "right")
 
     def _load_color(self, value: float) -> tuple[int, int, int]:

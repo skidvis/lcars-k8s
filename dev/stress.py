@@ -8,7 +8,7 @@ from lcarsk8s.cluster import DemoSource
 SEQ = ["3","4","5","2","tab","tab","n","n","a","slash","w","e","b","escape",
        "full_stop","full_stop","comma","r","1","1","space","space",
        "plus","minus","ctrl+r","down","down","d","m","escape","l","c","p","escape",
-       "x","y","question_mark","escape","3","r","2","end","home"]
+       "question_mark","escape","3","r","2","end","home"]
 
 async def main():
     src = DemoSource(); app = LcarsK8s(src, interval=60.0)

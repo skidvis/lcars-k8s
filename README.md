@@ -6,10 +6,10 @@ lcars-k8s is a Kubernetes operations dashboard with two interfaces:
 - A responsive Textual terminal interface for SSH, Kmscon, FbTerm, and ordinary terminals
 
 It displays cluster CPU and memory history, node utilization, pods, deployments,
-events, container logs, pod details, and Kubernetes manifests. It can also delete a
-selected pod after confirmation.
+events, container logs, pod details, and Kubernetes manifests. The dashboard is
+strictly read-only.
 
-![Pixel-rendered LCARS dashboard](preview-graphics.png)
+![Animated pixel-rendered LCARS dashboard](preview-graphics.gif)
 
 ## Requirements
 
@@ -172,7 +172,6 @@ The active Kubernetes identity needs these permissions:
 | deployments.apps | get, list | deployment readiness and rollout status |
 | namespaces | get, list | namespace selection |
 | metrics.k8s.io nodes and pods | get, list | live CPU and memory usage |
-| pods | delete | optional pod deletion |
 
 Check the important permissions for the current identity:
 
@@ -183,7 +182,6 @@ kubectl auth can-i get pods/log --all-namespaces
 kubectl auth can-i list events --all-namespaces
 kubectl auth can-i list deployments.apps --all-namespaces
 kubectl auth can-i list nodes.metrics.k8s.io
-kubectl auth can-i delete pods --all-namespaces
 ```
 
 `rbac.yaml` creates a service account, ClusterRole, and ClusterRoleBinding with
@@ -192,10 +190,6 @@ the required permissions:
 ```bash
 kubectl apply -f rbac.yaml
 ```
-
-For a read-only dashboard, remove `delete` from the pods rule before applying
-the manifest. The interface remains usable, but deletion attempts will report a
-permission error.
 
 When lcars-k8s runs inside a Kubernetes pod, it automatically uses the pod's
 service account if no usable kubeconfig is available. Set the pod spec's
@@ -453,7 +447,6 @@ Do not set `COLORTERM=truecolor` for FbTerm.
 | `m` | toggle the manifest in the terminal detail modal |
 | `c` | select the next container in the terminal log modal |
 | `p` | include previous container logs in the terminal log modal |
-| `x` or `Delete` | request pod deletion with confirmation |
 | `Space` | hold or resume scanning |
 | `+` | increase the interval and scan less often |
 | `-` | decrease the interval and scan more often |
@@ -461,9 +454,6 @@ Do not set `COLORTERM=truecolor` for FbTerm.
 | `F5` | scan immediately in graphical mode |
 | `?` | open help |
 | `q` | quit or close the active modal |
-
-Pod deletion requires confirmation with `y` or `Enter`. Use `n`, `Esc`, or `q`
-to cancel.
 
 ## Command line reference
 
@@ -622,7 +612,7 @@ See `dev/README.md` for helper arguments and expected output.
 | `lcarsk8s/graphics.py` | pixel-rendered pygame interface |
 | `lcarsk8s/app.py` | Textual application, polling, and actions |
 | `lcarsk8s/widgets.py` | terminal dashboard widgets |
-| `lcarsk8s/screens.py` | terminal modals for help, logs, details, and deletion |
+| `lcarsk8s/screens.py` | terminal modals for help, logs, and details |
 | `lcarsk8s/palette.py` | LCARS terminal palettes and load gradients |
 | `lcarsk8s/glyphs.py` | terminal graphs, meters, elbows, and pills |
 | `lcarsk8s/assets/Antonio.ttf` | bundled LCARS display typeface |
