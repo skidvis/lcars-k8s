@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import math
 import os
 import time
 from concurrent.futures import Future, ThreadPoolExecutor
@@ -26,6 +27,10 @@ TOMATO = (221, 102, 68)
 WHITE = (245, 246, 250)
 GREY = (92, 92, 122)
 DIM = (45, 34, 54)
+
+def shade_color(color: tuple[int, int, int], amount: float) -> tuple[int, int, int]:
+    return tuple(int(channel * amount) for channel in color)
+
 
 SORTS = (
     ("cpu", "CPU", lambda pod: pod.cpu),
@@ -86,6 +91,8 @@ class LcarsGraphics:
         self.action_kind = ""
         self.fonts = self._fonts()
         self.clock = pygame.time.Clock()
+        self.motion_started = time.monotonic()
+        self.motion_time = 0.0
         self.presented = False
         self._start_poll()
 
@@ -389,8 +396,10 @@ class LcarsGraphics:
                     f"{event.namespace} {event.name} {event.reason} {event.message}".lower())]
 
     def draw(self) -> None:
+        self.motion_time = time.monotonic() - self.motion_started
         self.canvas.fill(BLACK)
         self._frame()
+        self._data_sequencer()
         self._stats(139)
         if self.show_graphs:
             self._telemetry()
@@ -417,6 +426,7 @@ class LcarsGraphics:
         self._text(context.upper(), 365, 92, TAN, "label")
         self._text(version.upper(), 1870, 92, ICE, "label", "right")
         self._text(f"STARDATE {stardate()}", 1870, 127, LILAC, "small", "right")
+        self._scanner_rail(365, 76, 1531, 10, ORANGE, 0.0)
         nav = (("02", "PODS", ORANGE), ("03", "NODES", LILAC),
                ("04", "EVENTS", TAN), ("?", "HELP", PERIWINKLE))
         y = 190
@@ -458,6 +468,9 @@ class LcarsGraphics:
         self._text(code, x + width - 18, y + 7, BLACK, "small", "right")
         plot = pygame.Rect(x, y + 48, width, height - 48)
         pygame.draw.rect(self.canvas, PANEL, plot)
+        scan_x = plot.x + int((self.motion_time * 74) % plot.width)
+        pygame.draw.line(self.canvas, shade_color(color, 0.35),
+                         (scan_x, plot.y), (scan_x, plot.bottom), 2)
         for step in range(1, 4):
             gy = plot.bottom - step * plot.height // 4
             pygame.draw.line(self.canvas, DIM, (plot.x, gy), (plot.right, gy), 1)
@@ -473,6 +486,10 @@ class LcarsGraphics:
                 pygame.draw.lines(self.canvas, color, False, points, 4)
             else:
                 pygame.draw.circle(self.canvas, color, points[0], 4)
+            pulse = 6 + int((math.sin(self.motion_time * 6.5) + 1) * 3)
+            pygame.draw.circle(self.canvas, shade_color(color, 0.65),
+                               points[-1], pulse + 5, 3)
+            pygame.draw.circle(self.canvas, WHITE, points[-1], 5)
         self._text(f"{fraction * 100:05.1f}%", x + 24, y + 65,
                    self._load_color(fraction), "hero")
         if self.snapshot:
@@ -591,13 +608,46 @@ class LcarsGraphics:
             self._text_clip(str(value), x + offset, y + 3,
                             color if not selected else BLACK, "small", width)
 
+    def _data_sequencer(self) -> None:
+        phase = int(self.motion_time * 5)
+        colors = (GOLD, ORANGE, PEACH, LILAC, PERIWINKLE, ICE)
+        for index in range(16):
+            y = 184 + index * 48
+            value = (phase * 17 + index * 31) % 100
+            color = colors[(phase // 2 + index) % len(colors)]
+            if (phase + index) % 4 == 0:
+                pygame.draw.rect(self.canvas, color, (291, y + 9, 12, 18))
+            else:
+                pygame.draw.rect(self.canvas, shade_color(color, 0.32),
+                                 (291, y + 9, 12, 18))
+            self._text(f"{value:02}", 332, y, color, "label", "right")
+
     def _footer(self) -> None:
+        self._scanner_rail(340, 998, 1556, 9, LILAC, 0.55)
         pygame.draw.rect(self.canvas, LILAC, (24, 1012, 260, 44))
         pygame.draw.rect(self.canvas, self.status_color, (24, 1036, 1872, 28), border_radius=14)
         pygame.draw.rect(self.canvas, self.status_color, (24, 1036, 40, 28))
         legend = "2-4 VIEW   N NAMESPACE   / FILTER   <> SORT   R REVERSE   L LOGS   D DETAIL   X DELETE   SPACE HOLD   Q QUIT"
         self._text(legend, 340, 1018, TAN, "tiny")
+        light = int(self.motion_time * 4) % 3
+        for index in range(3):
+            color = self.status_color if index == light else shade_color(self.status_color, 0.28)
+            pygame.draw.circle(self.canvas, color, (310 + index * 13, 1050), 4)
         self._text(self.status, 1870, 1041, BLACK, "small", "right")
+
+    def _scanner_rail(self, x: int, y: int, width: int, height: int,
+                      color: tuple[int, int, int], offset: float) -> None:
+        pygame.draw.rect(self.canvas, shade_color(color, 0.22), (x, y, width, height))
+        segment = 190
+        travel = width + segment
+        head = x + int(((self.motion_time * 0.34 + offset) % 1.0) * travel) - segment
+        start = max(x, head)
+        end = min(x + width, head + segment)
+        if end > start:
+            pygame.draw.rect(self.canvas, color, (start, y, end - start, height))
+        gap = 11
+        pygame.draw.rect(self.canvas, BLACK, (x + width // 3, y, gap, height))
+        pygame.draw.rect(self.canvas, BLACK, (x + width * 2 // 3, y, gap, height))
 
     def _filter_overlay(self) -> None:
         pygame.draw.rect(self.canvas, BLACK, (520, 948, 1120, 58), border_radius=29)
