@@ -468,7 +468,7 @@ class LcarsGraphics:
         self._text(code, x + width - 18, y + 7, BLACK, "small", "right")
         plot = pygame.Rect(x, y + 48, width, height - 48)
         pygame.draw.rect(self.canvas, PANEL, plot)
-        scan_x = plot.x + int((self.motion_time * 74) % plot.width)
+        scan_x = plot.x + int((self.motion_time * 49.58) % plot.width)
         pygame.draw.line(self.canvas, shade_color(color, 0.35),
                          (scan_x, plot.y), (scan_x, plot.bottom), 2)
         for step in range(1, 4):
@@ -486,7 +486,7 @@ class LcarsGraphics:
                 pygame.draw.lines(self.canvas, color, False, points, 4)
             else:
                 pygame.draw.circle(self.canvas, color, points[0], 4)
-            pulse = 6 + int((math.sin(self.motion_time * 6.5) + 1) * 3)
+            pulse = 6 + int((math.sin(self.motion_time * 4.355) + 1) * 3)
             pygame.draw.circle(self.canvas, shade_color(color, 0.65),
                                points[-1], pulse + 5, 3)
             pygame.draw.circle(self.canvas, WHITE, points[-1], 5)
@@ -609,17 +609,12 @@ class LcarsGraphics:
                             color if not selected else BLACK, "small", width)
 
     def _data_sequencer(self) -> None:
-        phase = int(self.motion_time * 5)
+        phase = int(self.motion_time * 3.35)
         colors = (GOLD, ORANGE, PEACH, LILAC, PERIWINKLE, ICE)
         for index in range(16):
             y = 184 + index * 48
             value = (phase * 17 + index * 31) % 100
             color = colors[(phase // 2 + index) % len(colors)]
-            if (phase + index) % 4 == 0:
-                pygame.draw.rect(self.canvas, color, (291, y + 9, 12, 18))
-            else:
-                pygame.draw.rect(self.canvas, shade_color(color, 0.32),
-                                 (291, y + 9, 12, 18))
             self._text(f"{value:02}", 332, y, color, "label", "right")
 
     def _footer(self) -> None:
@@ -629,7 +624,7 @@ class LcarsGraphics:
         pygame.draw.rect(self.canvas, self.status_color, (24, 1036, 40, 28))
         legend = "2-4 VIEW   N NAMESPACE   / FILTER   <> SORT   R REVERSE   L LOGS   D DETAIL   X DELETE   SPACE HOLD   Q QUIT"
         self._text(legend, 340, 1018, TAN, "tiny")
-        light = int(self.motion_time * 4) % 3
+        light = int(self.motion_time * 2.68) % 3
         for index in range(3):
             color = self.status_color if index == light else shade_color(self.status_color, 0.28)
             pygame.draw.circle(self.canvas, color, (310 + index * 13, 1050), 4)
@@ -640,7 +635,7 @@ class LcarsGraphics:
         pygame.draw.rect(self.canvas, shade_color(color, 0.22), (x, y, width, height))
         segment = 190
         travel = width + segment
-        head = x + int(((self.motion_time * 0.34 + offset) % 1.0) * travel) - segment
+        head = x + int(((self.motion_time * 0.2278 + offset) % 1.0) * travel) - segment
         start = max(x, head)
         end = min(x + width, head + segment)
         if end > start:
