@@ -1,0 +1,30 @@
+[build-system]
+requires = ["setuptools>=64"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "lcars-k8s"
+version = "1.0.0"
+description = "A btop-shaped, LCARS-dressed terminal dashboard for Kubernetes"
+readme = "README.md"
+requires-python = ">=3.10"
+keywords = ["kubernetes", "tui", "terminal", "dashboard", "lcars", "btop"]
+classifiers = [
+    "Environment :: Console :: Curses",
+    "Intended Audience :: System Administrators",
+    "Programming Language :: Python :: 3",
+    "Topic :: System :: Monitoring",
+]
+dependencies = [
+    "textual>=0.79",
+    "kubernetes>=28.1",
+]
+
+[project.scripts]
+lcars-k8s = "lcarsk8s.cli:main"
+
+[project.urls]
+Homepage = "https://github.com/example/lcars-k8s"
+
+[tool.setuptools]
+packages = ["lcarsk8s"]
