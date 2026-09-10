@@ -53,6 +53,9 @@ def build_parser() -> argparse.ArgumentParser:
         "--sidebar", choices=("left", "right"), default="left",
         help="place the navigation sidebar on the left or right (default: left)")
     display.add_argument(
+        "--no-graphs", action="store_true",
+        help="start with the CPU and memory graphs hidden")
+    display.add_argument(
         "--colors", "--colours", dest="colors",
         choices=("auto", "full", "console"), default="auto",
         help="'full' uses the 24-bit LCARS palette; 'console' picks 16-colour "
@@ -145,7 +148,7 @@ def main(argv: list[str] | None = None) -> int:
                 source, interval=max(0.5, args.interval),
                 namespace=args.namespace, view=args.view,
                 windowed=args.windowed, resolution=resolution,
-                sidebar=args.sidebar).run()
+                sidebar=args.sidebar, show_graphs=not args.no_graphs).run()
         except Exception as error:
             print(f"lcars-k8s: graphical display failed: {error}", file=sys.stderr)
             print("Switch away from Kmscon before direct KMS/DRM mode, or use "
@@ -156,7 +159,7 @@ def main(argv: list[str] | None = None) -> int:
 
     app = LcarsK8s(source, interval=max(0.5, args.interval),
                    namespace=args.namespace, view=args.view,
-                   sidebar=args.sidebar)
+                   sidebar=args.sidebar, show_graphs=not args.no_graphs)
     app.run()
     return 0
 

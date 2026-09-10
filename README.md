@@ -488,6 +488,7 @@ lcars-k8s [options]
 | `--direct-kms` | use SDL KMSDRM instead of the Xorg kiosk |
 | `--resolution WIDTHxHEIGHT` | set graphical output resolution |
 | `--sidebar left` or `--sidebar right` | place navigation on either side |
+| `--no-graphs` | start with CPU and memory graphs hidden |
 | `--kmscon` | use the Kmscon terminal profile |
 | `--fbterm` | use the FbTerm terminal profile |
 | `--colors auto` | detect the terminal color mode |

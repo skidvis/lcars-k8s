@@ -142,13 +142,15 @@ class LcarsK8s(App):
     ]
 
     def __init__(self, source, interval: float = 2.0, namespace: str = "",
-                 view: str = "pods", sidebar: str = "left") -> None:
+                 view: str = "pods", sidebar: str = "left",
+                 show_graphs: bool = True) -> None:
         super().__init__()
         self.source = source
         self.interval = interval
         self.namespace = namespace
         self.view = view
         self.sidebar_side = sidebar
+        self.show_graphs = show_graphs
         self.snapshot: Snapshot | None = None
         self.filter_text = ""
         self.sort_index = 5
@@ -174,7 +176,7 @@ class LcarsK8s(App):
             if self.sidebar_side == "left":
                 yield LcarsSidebar(side="left")
             with Vertical(id="main"):
-                with Horizontal(id="meters"):
+                with Horizontal(id="meters", classes="" if self.show_graphs else "hidden"):
                     yield LoadPanel("CLUSTER CPU", "31-882", P.ORANGE, P.LOAD_STOPS,
                                     id="cpu-panel")
                     yield LoadPanel("CLUSTER MEMORY", "44-119", P.LILAC, P.MEM_STOPS,

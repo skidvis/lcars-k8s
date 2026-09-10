@@ -48,7 +48,7 @@ class LcarsGraphics:
     def __init__(self, source, interval: float = 2.0, namespace: str = "",
                  view: str = "pods", windowed: bool = False,
                  resolution: tuple[int, int] | None = None,
-                 sidebar: str = "left") -> None:
+                 sidebar: str = "left", show_graphs: bool = True) -> None:
         pygame.display.init()
         pygame.font.init()
         flags = pygame.RESIZABLE if windowed else pygame.FULLSCREEN
@@ -73,7 +73,7 @@ class LcarsGraphics:
         self.history_cpu: list[float] = []
         self.history_mem: list[float] = []
         self.paused = False
-        self.show_graphs = True
+        self.show_graphs = show_graphs
         self.filter_text = ""
         self.filtering = False
         self.sort_index = 5
