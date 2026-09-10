@@ -462,16 +462,18 @@ class LcarsK8s(App):
         self.query_one("#table-bar", Static).update(bar)
 
     def on_resize(self) -> None:
-        # An 80x24 SSH window should still be usable: drop the sidebar first,
-        # then shrink the graphs, then drop them entirely.
         width, height = self.size.width, self.size.height
+        expanded_frame = width >= 140 and height >= 40
+        self.query_one(LcarsHeader).styles.height = 5 if expanded_frame else 3
+        self.query_one(LcarsFooter).styles.height = 3 if expanded_frame else 2
         self.query_one(LcarsSidebar).display = width >= 92
         meters = self.query_one("#meters")
         if height < 18:
             meters.display = False
         else:
             meters.display = not meters.has_class("hidden")
-            meters.styles.height = 12 if height >= 34 else (9 if height >= 26 else 7)
+            meters.styles.height = 14 if height >= 50 else (
+                12 if height >= 34 else (9 if height >= 26 else 7))
         self.call_after_refresh(self._update_table_bar)
 
     # -- status ----------------------------------------------------------

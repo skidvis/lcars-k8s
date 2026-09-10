@@ -3,7 +3,9 @@ import asyncio, sys
 import cairosvg
 from lcarsk8s import palette, glyphs
 
-MODE = "console" if "--console" in sys.argv else "colour"
+MODE = "console" if "--console" in sys.argv else (
+    "kmscon" if "--kmscon" in sys.argv else (
+        "fbterm" if "--fbterm" in sys.argv else "colour"))
 palette.set_mode(MODE)
 glyphs.set_glyphs(next((a.split("=")[1] for a in sys.argv if a.startswith("--glyphs=")),
                         "solid" if MODE == "console" else "braille"))
@@ -34,7 +36,9 @@ async def main(width=180, height=50, keys=(), name="shot"):
 
 
 if __name__ == "__main__":
-    argv = [a for a in sys.argv[1:] if a != "--console" and not a.startswith("--glyphs=")]
+    argv = [a for a in sys.argv[1:]
+            if a not in ("--console", "--kmscon", "--fbterm")
+            and not a.startswith("--glyphs=")]
     name = argv[0] if argv else "shot"
     w, h = (int(x) for x in (argv[1].split("x") if len(argv) > 1 else ["180", "50"]))
     asyncio.run(main(width=w, height=h, keys=argv[2:], name=name))

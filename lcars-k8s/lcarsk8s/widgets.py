@@ -40,45 +40,66 @@ class LcarsHeader(Widget):
 
     def render(self) -> RenderResult:
         width = max(ARM + 8, self.size.width)
+        expanded = self.size.height >= 5
         rows: list[Text] = []
 
         top = Text()
-        top.append(G.Q_BR, style=P.ORANGE)
-        top.append(G.FULL * (ARM - 1), style=P.ORANGE)
-        top.append(G.FULL * (width - ARM - 1), style=P.ORANGE)
+        top.append(G.FULL * ARM, style=P.BUTTERSCOTCH)
+        top.append(G.FULL * max(1, width - ARM - 1), style=P.ORANGE)
         top.append(G.CAP_RIGHT, style=P.ORANGE)
-        rows.append(top)
+        rows.append(_pad(top, width))
 
-        middle = Text()
-        middle.append(G.FULL * ARM, style=P.ORANGE)
-        middle.append(G.Q_TL, style=P.ORANGE)
-        middle.append(" ")
-        middle.append(self.title_text.upper(), style=Style(color=P.ORANGE, bold=True))
+        title = Text()
+        title.append(G.FULL * ARM, style=P.BUTTERSCOTCH)
+        title.append(G.Q_TL, style=P.BUTTERSCOTCH)
+        title.append(" ")
+        title.append(self.title_text.upper(), style=Style(color=P.ORANGE, bold=True))
         right = Text()
         right.append(f"{self.context} ", style=P.TAN)
         right.append("· ", style=P.GREY)
         right.append(self.version, style=P.ANAKIWA)
-        gap = width - middle.cell_len - right.cell_len - 1
+        gap = width - title.cell_len - right.cell_len - 1
         if gap > 0:
-            middle.append(" " * gap)
-            middle.append(right)
-        rows.append(_pad(middle, width))
+            title.append(" " * gap)
+            title.append(right)
+        rows.append(_pad(title, width))
 
-        bottom = Text()
-        bottom.append(G.Q_TR, style=P.ORANGE)
-        bottom.append(f"{G.lcars_code(47, 1701)} ".rjust(ARM - 1),
-                      style=Style(color=P.BLACK, bgcolor=P.ORANGE, bold=True))
-        bottom.append("  ")
-        bottom.append(self.detail, style=P.GREY)
-        trailer = Text()
-        trailer.append(f"STARDATE {stardate()}", style=P.LILAC)
-        gap = width - bottom.cell_len - trailer.cell_len - 1
-        if gap > 2:
-            bottom.append(" " * (gap - 12))
-            bottom.append(G.segment_strip(11, (P.TAN, P.PERIWINKLE, P.BUTTERSCOTCH)))
-            bottom.append(" ")
-            bottom.append(trailer)
-        rows.append(_pad(bottom, width))
+        identity = Text()
+        identity.append(G.Q_TR, style=P.BUTTERSCOTCH)
+        identity.append(f"{G.lcars_code(47, 1701)} ".rjust(ARM - 1),
+                        style=Style(color=P.BLACK, bgcolor=P.BUTTERSCOTCH, bold=True))
+        identity.append("  ")
+        identity.append(self.detail, style=P.GREY)
+        trailer = Text(f"STARDATE {stardate()}", style=P.LILAC)
+        gap = width - identity.cell_len - trailer.cell_len - 1
+        if gap > 0:
+            identity.append(" " * gap)
+            identity.append(trailer)
+        rows.append(_pad(identity, width))
+
+        if expanded:
+            signal = Text()
+            signal.append(G.FULL * 7, style=P.BUTTERSCOTCH)
+            signal.append(" ")
+            signal.append(G.FULL * (ARM - 8), style=P.LILAC)
+            signal.append("  ")
+            signal.append(G.segment_strip(max(1, width - ARM - 2),
+                                          (P.PERIWINKLE, P.TAN, P.ORANGE,
+                                           P.LILAC, P.BUTTERSCOTCH), seed=5))
+            rows.append(_pad(signal, width))
+
+            channel = Text()
+            channel.append(G.FULL * ARM, style=P.LILAC)
+            channel.append(G.Q_BL, style=P.LILAC)
+            channel.append("  PRIMARY OPERATIONS CHANNEL", style=P.GREY)
+            links = {"console": "CONSOLE LINK 16C", "kmscon": "KMSCON LINK 256C",
+                     "fbterm": "FBTERM LINK 256C", "colour": "FULL-SPECTRUM LINK"}
+            mode = Text(links[P.MODE], style=P.PERIWINKLE)
+            gap = width - channel.cell_len - mode.cell_len - 1
+            if gap > 0:
+                channel.append(" " * gap)
+                channel.append(mode)
+            rows.append(_pad(channel, width))
         return Group(*rows)
 
 
@@ -96,10 +117,11 @@ class LcarsFooter(Widget):
 
     def render(self) -> RenderResult:
         width = max(ARM + 8, self.size.width)
+        expanded = self.size.height >= 3
 
         legend = Text()
-        legend.append(G.FULL * ARM, style=P.ORANGE)
-        legend.append(G.Q_BL, style=P.ORANGE)
+        legend.append(G.FULL * ARM, style=P.LILAC)
+        legend.append(G.Q_BL, style=P.LILAC)
         legend.append(" ")
         for chunk in self.keys.split("  "):
             if not chunk:
@@ -109,15 +131,28 @@ class LcarsFooter(Widget):
             legend.append(f" {label}  ", style=P.GREY)
         legend.truncate(width)
 
+        rows = [_pad(legend, width)]
+        if expanded:
+            signal = Text()
+            signal.append(G.FULL * 8, style=P.LILAC)
+            signal.append(" ")
+            signal.append(G.FULL * (ARM - 9), style=P.PERIWINKLE)
+            signal.append("  ")
+            signal.append(G.segment_strip(max(1, width - ARM - 2),
+                                          (P.LILAC, P.TAN, P.PERIWINKLE,
+                                           P.BUTTERSCOTCH), seed=2))
+            rows.append(_pad(signal, width))
+
         bar = Text()
-        bar.append(G.Q_TR, style=P.ORANGE)
-        bar.append(G.FULL * (ARM - 1), style=P.ORANGE)
+        bar.append(G.Q_TR, style=P.LILAC)
+        bar.append(G.FULL * (ARM - 1), style=P.LILAC)
         message = f" {self.status.upper()} "
         body_width = width - ARM - 1
         text = message.rjust(max(0, body_width))[-max(0, body_width):]
         bar.append(text, style=Style(color=P.BLACK, bgcolor=self.status_colour, bold=True))
         bar.append(G.CAP_RIGHT, style=self.status_colour)
-        return Group(_pad(legend, width), bar)
+        rows.append(_pad(bar, width))
+        return Group(*rows)
 
 
 class LcarsSidebar(Widget):
@@ -135,10 +170,10 @@ class LcarsSidebar(Widget):
     paused = reactive(False)
     interval = reactive(2.0)
 
-    NAV = (("pods", "PODS", P.ORANGE),
-           ("nodes", "NODES", P.LILAC),
-           ("events", "EVENTS", P.TAN),
-           ("help", "HELP", P.PERIWINKLE))
+    NAV = (("pods", "02  PODS", P.ORANGE),
+           ("nodes", "03  NODES", P.LILAC),
+           ("events", "04  EVENTS", P.TAN),
+           ("help", "?  HELP", P.PERIWINKLE))
 
     class Selected(Message):
         def __init__(self, kind: str, value: str) -> None:

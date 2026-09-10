@@ -18,6 +18,7 @@ classifiers = [
 dependencies = [
     "textual>=0.79",
     "kubernetes>=28.1",
+    "pygame-ce>=2.5",
 ]
 
 [project.scripts]
@@ -28,3 +29,6 @@ Homepage = "https://github.com/example/lcars-k8s"
 
 [tool.setuptools]
 packages = ["lcarsk8s"]
+
+[tool.setuptools.package-data]
+lcarsk8s = ["assets/*"]

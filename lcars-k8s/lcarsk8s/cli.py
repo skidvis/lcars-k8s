@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import os
+import shutil
 import sys
 
 from . import __version__
@@ -12,7 +13,7 @@ from . import __version__
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="lcars-k8s",
-        description="An LCARS-styled terminal dashboard for Kubernetes.")
+        description="An LCARS-styled graphical and terminal dashboard for Kubernetes.")
     parser.add_argument("--demo", action="store_true",
                         help="run against a synthetic cluster, no kubeconfig needed")
     parser.add_argument("--kubeconfig", default=os.environ.get("KUBECONFIG"),
@@ -27,6 +28,25 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--timeout", type=int, default=10,
                         help="apiserver request timeout in seconds (default: 10)")
     display = parser.add_argument_group("display")
+    renderer = display.add_mutually_exclusive_group()
+    renderer.add_argument(
+        "--graphics", action="store_true",
+        help="run the pixel-rendered SDL interface in an Xorg kiosk")
+    renderer.add_argument(
+        "--kmscon", action="store_true",
+        help="enable Kmscon 256-colour output and full Unicode geometry")
+    renderer.add_argument(
+        "--fbterm", action="store_true",
+        help="enable FbTerm 256-colour output and full Unicode geometry")
+    display.add_argument(
+        "--windowed", action="store_true",
+        help="run graphical mode in a resizable desktop window")
+    display.add_argument(
+        "--direct-kms", action="store_true",
+        help="use SDL KMSDRM directly instead of the recommended Xorg kiosk")
+    display.add_argument(
+        "--resolution", metavar="WIDTHxHEIGHT",
+        help="graphical output resolution (default: current display)")
     display.add_argument(
         "--colors", "--colours", dest="colors",
         choices=("auto", "full", "console"), default="auto",
@@ -44,18 +64,48 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def main(argv: list[str] | None = None) -> int:
-    args = build_parser().parse_args(argv)
+    raw_args = list(argv) if argv is not None else sys.argv[1:]
+    args = build_parser().parse_args(raw_args)
 
-    # The palette has to be chosen before the app module is imported, because
-    # its stylesheet is built from the palette at import time.
+    if args.kmscon:
+        os.environ["TERM"] = "xterm-256color"
+    elif args.fbterm:
+        os.environ["TERM"] = "fbterm"
+
     from . import glyphs, palette
 
-    mode = palette.detect_mode() if args.colors == "auto" else (
-        "console" if args.colors == "console" else "colour")
+    mode = "kmscon" if args.kmscon else ("fbterm" if args.fbterm else (
+        palette.detect_mode() if args.colors == "auto" else (
+            "console" if args.colors == "console" else "colour")))
     palette.set_mode(mode)
     glyphs.set_glyphs(
         ("solid" if mode == "console" else "braille")
         if args.glyphs == "auto" else args.glyphs)
+
+    x11_child = os.environ.get("LCARS_X11_CHILD") == "1"
+    if args.graphics and not args.windowed and not args.direct_kms and not x11_child:
+        xinit = shutil.which("xinit")
+        if xinit is None:
+            print("lcars-k8s: xinit is required for graphical console mode.",
+                  file=sys.stderr)
+            print("Install it with: sudo apt install xinit xserver-xorg-core",
+                  file=sys.stderr)
+            return 2
+        os.environ.pop("DISPLAY", None)
+        os.environ.pop("WAYLAND_DISPLAY", None)
+        os.environ["SDL_VIDEODRIVER"] = "x11"
+        os.environ["LCARS_X11_CHILD"] = "1"
+        server = [":1", "-keeptty", "-nolisten", "tcp"]
+        try:
+            tty = os.ttyname(sys.stdin.fileno())
+            if tty.startswith("/dev/tty"):
+                server.insert(1, f"vt{tty.removeprefix('/dev/tty')}")
+        except OSError:
+            pass
+        print("lcars-k8s: launching fullscreen Xorg kiosk", file=sys.stderr)
+        command = [xinit, sys.executable, "-m", "lcarsk8s", *raw_args,
+                   "--", *server]
+        os.execvp(xinit, command)
 
     from .cluster import ClusterError, DemoSource, KubeSource
 
@@ -69,6 +119,29 @@ def main(argv: list[str] | None = None) -> int:
             print(f"lcars-k8s: {error}", file=sys.stderr)
             print("Try --demo to see the interface without a cluster.",
                   file=sys.stderr)
+            return 2
+
+    if args.graphics:
+        if args.direct_kms:
+            os.environ.setdefault("SDL_VIDEODRIVER", "kmsdrm")
+        resolution = None
+        if args.resolution:
+            try:
+                width, height = args.resolution.lower().split("x", 1)
+                resolution = int(width), int(height)
+            except (TypeError, ValueError):
+                print("lcars-k8s: resolution must look like 1920x1080", file=sys.stderr)
+                return 2
+        try:
+            from .graphics import LcarsGraphics
+            return LcarsGraphics(
+                source, interval=max(0.5, args.interval),
+                namespace=args.namespace, view=args.view,
+                windowed=args.windowed, resolution=resolution).run()
+        except Exception as error:
+            print(f"lcars-k8s: graphical display failed: {error}", file=sys.stderr)
+            print("Switch away from Kmscon before direct KMS/DRM mode, or use "
+                  "--windowed under a desktop session.", file=sys.stderr)
             return 2
 
     from .app import LcarsK8s

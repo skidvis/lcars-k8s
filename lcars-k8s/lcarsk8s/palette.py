@@ -15,7 +15,7 @@ from __future__ import annotations
 import os
 from typing import Sequence
 
-MODE = "colour"  # "colour" | "console"
+MODE = "colour"  # "colour" | "kmscon" | "fbterm" | "console"
 
 _NAMES = ("BLACK", "ORANGE", "BUTTERSCOTCH", "ALMOND", "TAN", "SUNFLOWER",
           "GOLDENROD", "LILAC", "VIOLET", "PERIWINKLE", "ANAKIWA", "ICE",
@@ -94,9 +94,9 @@ _STATUS = {
 
 
 def set_mode(mode: str) -> None:
-    """Switch the whole palette between truecolor and 16-colour ANSI."""
+    """Switch the whole palette between rich and 16-colour ANSI output."""
     global MODE, LOAD_STOPS, MEM_STOPS, ROTATION
-    MODE = "console" if mode == "console" else "colour"
+    MODE = mode if mode in ("colour", "kmscon", "fbterm", "console") else "colour"
     table = _CONSOLE if MODE == "console" else _COLOUR
     globals().update({name: table[name] for name in _NAMES})
     LOAD_STOPS = _LOAD_CONSOLE if MODE == "console" else _LOAD_COLOUR
@@ -111,6 +111,8 @@ def detect_mode() -> str:
     font with no braille. Everything else is assumed capable.
     """
     term = os.environ.get("TERM", "")
+    if term == "fbterm":
+        return "fbterm"
     if term in ("linux", "dumb", "vt100", "vt220", "ansi", "cons25"):
         return "console"
     return "colour"

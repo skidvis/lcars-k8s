@@ -11,10 +11,25 @@ SOURCE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 say() { printf '\033[38;2;255;153;0m==>\033[0m %s\n' "$1"; }
 die() { printf '\033[38;2;204;68;68m==> %s\033[0m\n' "$1" >&2; exit 1; }
 
-command -v python3 >/dev/null || die "python3 is not installed. Run: sudo apt install python3"
-
 if [ "$(id -u)" -eq 0 ] && [ -n "${SUDO_USER:-}" ]; then
     die "Don't run this with sudo. It installs into your home directory, which you already own."
+fi
+
+PACKAGES=()
+command -v python3 >/dev/null 2>&1 || PACKAGES+=(python3 python3-venv)
+command -v xinit >/dev/null 2>&1 || PACKAGES+=(xinit)
+command -v Xorg >/dev/null 2>&1 || PACKAGES+=(xserver-xorg-core)
+
+if command -v python3 >/dev/null 2>&1 && ! python3 -c "import venv, ensurepip" 2>/dev/null; then
+    PACKAGES+=(python3-venv)
+fi
+
+if [ "${#PACKAGES[@]}" -gt 0 ]; then
+    command -v apt-get >/dev/null 2>&1 || die "Install these system packages first: ${PACKAGES[*]}"
+    command -v sudo >/dev/null 2>&1 || die "sudo is required to install: ${PACKAGES[*]}"
+    say "Installing system dependencies: ${PACKAGES[*]}"
+    sudo apt-get update -qq
+    sudo apt-get install -y "${PACKAGES[@]}"
 fi
 
 # pip builds in place and needs to write an egg-info directory here. A tree
@@ -30,11 +45,6 @@ python3 - <<'PY' || die "Python 3.10 or newer is required."
 import sys
 sys.exit(0 if sys.version_info >= (3, 10) else 1)
 PY
-
-if ! python3 -c "import venv, ensurepip" 2>/dev/null; then
-    say "Installing python3-venv (needs sudo)"
-    sudo apt-get update -qq && sudo apt-get install -y python3-venv
-fi
 
 # setuptools cannot rewrite an egg-info directory left behind by an earlier
 # run, so clear any build artifacts before starting.
