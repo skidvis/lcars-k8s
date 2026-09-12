@@ -8,6 +8,7 @@ which synthesises a plausible cluster for previewing the interface.
 
 from __future__ import annotations
 
+import ast
 import json
 import math
 import random
@@ -493,7 +494,16 @@ NGINX_ACCESS_RE = re.compile(
 NGINX_UPSTREAM_RE = re.compile(r'"[^"]*" "[^"]*" \S+ \S+ \[(?P<upstream>[^]]*)]')
 
 
-def parse_network_logs(raw: str) -> list[NetworkLog]:
+def parse_network_logs(raw: str | bytes) -> list[NetworkLog]:
+    if isinstance(raw, bytes):
+        raw = raw.decode("utf-8", errors="replace")
+    elif raw.startswith(("b'", 'b"')):
+        try:
+            encoded = ast.literal_eval(raw)
+        except (SyntaxError, ValueError):
+            encoded = None
+        if isinstance(encoded, bytes):
+            raw = encoded.decode("utf-8", errors="replace")
     entries = []
     for line in raw.splitlines():
         try:

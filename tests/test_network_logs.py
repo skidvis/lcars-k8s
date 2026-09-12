@@ -35,6 +35,20 @@ class ParseNetworkLogsTests(unittest.TestCase):
         self.assertEqual(entries[0].ingress, "default-www-depletement-com-80")
         self.assertEqual(entries[0].path, "/wp-admin/install.php")
 
+    def test_parses_stringified_bytes_from_kubernetes_client(self):
+        raw = repr(
+            b'{"time":"2026-09-12T04:03:35+00:00","path":"/about/",'
+            b'"status":200,"ingress":"default-www-sharkjets-com-80"}\n'
+            b'{"time":"2026-09-12T04:03:39+00:00","path":"/blog/",'
+            b'"status":200,"ingress":"default-www-puertoricancookbooks-com-80"}'
+        )
+
+        entries = parse_network_logs(raw)
+
+        self.assertEqual(len(entries), 2)
+        self.assertEqual(entries[0].path, "/about/")
+        self.assertEqual(entries[1].path, "/blog/")
+
     def test_parses_common_json_field_names(self):
         raw = (
             '{"time_iso8601":"2026-09-12T03:12:00+00:00",'
