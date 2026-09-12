@@ -105,10 +105,13 @@ class LcarsGraphics:
         self.motion_started = time.monotonic()
         self.motion_time = 0.0
         signal_started = time.monotonic()
-        self.signal_phases = {"top": 0, "bottom": 2}
+        self.signal_states = {
+            "top": [True, False, True],
+            "bottom": [False, True, False],
+        }
         self.next_signal_changes = {
-            name: signal_started + random.uniform(3.0, 5.0)
-            for name in self.signal_phases
+            name: [signal_started + random.uniform(3.0, 6.0) for _ in states]
+            for name, states in self.signal_states.items()
         }
         self.network_reveal_started = 0.0
         self.network_reveal_ids: set[str] = set()
@@ -774,21 +777,20 @@ class LcarsGraphics:
 
     def _advance_signal_rails(self) -> None:
         now = time.monotonic()
-        for name in self.signal_phases:
-            while now >= self.next_signal_changes[name]:
-                self.signal_phases[name] = (self.signal_phases[name] + 1) % 4
-                self.next_signal_changes[name] += random.uniform(3.0, 5.0)
+        for name, states in self.signal_states.items():
+            for index in range(len(states)):
+                while now >= self.next_signal_changes[name][index]:
+                    states[index] = not states[index]
+                    self.next_signal_changes[name][index] += random.uniform(3.0, 6.0)
 
     def _signal_rail(self, name: str, x: int, y: int, width: int, height: int,
                      color: tuple[int, int, int]) -> None:
         gap = 11
         segment_width = (width - gap * 2) // 3
-        phase = self.signal_phases[name]
-        lit_count = phase + 1 if phase < 3 else 0
-        for index in range(3):
+        for index, lit in enumerate(self.signal_states[name]):
             segment_x = x + index * (segment_width + gap)
             segment_end = x + width if index == 2 else segment_x + segment_width
-            segment_color = color if index < lit_count else shade_color(color, 0.22)
+            segment_color = color if lit else shade_color(color, 0.22)
             pygame.draw.rect(self.canvas, segment_color,
                              (segment_x, y, segment_end - segment_x, height))
 

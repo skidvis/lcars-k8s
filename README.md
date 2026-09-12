@@ -309,11 +309,11 @@ SDL's X11 backend, starts Xorg on display `:1`, and binds Xorg to the active VT
 when the terminal can be identified.
 
 Do not start fullscreen graphical mode as a background SSH job. Xorg needs an
-active local session and control of a local VT. The top and bottom signal rails
-run independent four-phase sequences. The first segment lights, the second joins
-it, then the third joins. All three switch off before the sequence repeats. Each
-rail chooses a new three-to-five-second duration for every phase and begins in a
-different state, preventing synchronization or a fixed cadence.
+active local session and control of a local VT. Every segment in the top and
+bottom signal rails operates independently. Each segment holds its current lit
+or dim state for a random interval between three and six seconds, then toggles
+and chooses another duration. The six independent timers create an unpredictable
+lighting order without synchronizing the rails.
 
 ### Desktop window preview
 
