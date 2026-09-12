@@ -467,7 +467,7 @@ class KubeSource:
             return entries, message
         if failures:
             return [], f"ingress logs unavailable ({failures[0]})"
-        return [], "No JSON ingress requests in the last minute"
+        return [], "No ingress requests in the last minute"
 
     def describe_pod(self, namespace: str, name: str) -> dict:
         pod = self.core.read_namespaced_pod(name=name, namespace=namespace,
@@ -486,19 +486,48 @@ def _is_ingress_controller(raw) -> bool:
     return labelled or name.startswith("ingress-nginx-controller-")
 
 
+NGINX_ACCESS_RE = re.compile(
+    r'^\S+ - \S+ \[(?P<time>[^]]+)] "(?P<request>[^"]*)" '
+    r'(?P<status>\d{3})(?P<rest>.*)$'
+)
+NGINX_UPSTREAM_RE = re.compile(r'"[^"]*" "[^"]*" \S+ \S+ \[(?P<upstream>[^]]*)]')
+
+
 def parse_network_logs(raw: str) -> list[NetworkLog]:
     entries = []
     for line in raw.splitlines():
         try:
             value = json.loads(line)
-            status = int(value.get("status"))
-        except (AttributeError, TypeError, ValueError, json.JSONDecodeError):
+        except (TypeError, ValueError, json.JSONDecodeError):
+            value = None
+        if isinstance(value, dict):
+            try:
+                status = int(value.get("status", value.get("upstream_status")))
+            except (TypeError, ValueError):
+                continue
+            request = str(value.get("request", "")).split()
+            path = (value.get("path") or value.get("request_uri")
+                    or value.get("uri") or (request[1] if len(request) > 1 else "-"))
+            entries.append(NetworkLog(
+                time=str(value.get("time") or value.get("timestamp")
+                         or value.get("time_iso8601") or "-"),
+                status=status,
+                ingress=str(value.get("ingress") or value.get("ingress_name")
+                            or value.get("resource_name")
+                            or value.get("proxy_upstream_name") or "-"),
+                path=str(path),
+            ))
             continue
+        match = NGINX_ACCESS_RE.match(line)
+        if not match:
+            continue
+        request = match.group("request").split()
+        upstream = NGINX_UPSTREAM_RE.search(match.group("rest"))
         entries.append(NetworkLog(
-            time=str(value.get("time", "-")),
-            status=status,
-            ingress=str(value.get("ingress", "-")),
-            path=str(value.get("path", "-")),
+            time=match.group("time"),
+            status=int(match.group("status")),
+            ingress=(upstream.group("upstream") if upstream else "-"),
+            path=request[1] if len(request) > 1 else "-",
         ))
     return entries
 

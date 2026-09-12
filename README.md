@@ -499,11 +499,22 @@ Display modifiers such as `--windowed`, `--direct-kms`, and `--resolution` are
 intended to be used with `--graphics`.
 
 The network view discovers controller pods by the standard Ingress NGINX labels,
-with a controller-name fallback. It reads JSON log lines from every discovered
-replica using a 60-second window. Press `/` or `f` to filter the visible time,
-status, ingress name, or path. If Ingress NGINX is absent, inaccessible, or not
-configured for JSON access logs, the view remains available and reports the
-condition in the status area.
+with a controller-name fallback. It reads the default Ingress NGINX access-log
+format and JSON access logs from every discovered replica using a 60-second
+window. For default-format logs, the ingress column shows the upstream name.
+Press `/` or `f` to filter the visible time, status, ingress or upstream name,
+or path. If Ingress NGINX is absent or inaccessible, the view remains available
+and reports the condition in the status area.
+
+The verified JSON format uses `time`, `status`, `ingress`, and `path`:
+
+```json
+{"time":"2026-09-12T04:03:33+00:00","ip":"172.16.46.24","method":"GET","path":"/wp-admin/install.php","status":404,"bytes":4333,"rt":0.003,"ingress":"default-www-depletement-com-80","upstream":"172.16.228.125:4321","ustatus":"404","urt":"0.003"}
+```
+
+The parser also accepts `timestamp` or `time_iso8601` for time,
+`ingress_name`, `resource_name`, or `proxy_upstream_name` for ingress, and
+`request_uri`, `uri`, or the path in `request` for path.
 
 ## Troubleshooting
 
@@ -524,6 +535,31 @@ Then set `KUBECONFIG` or pass `--kubeconfig` explicitly.
 Use `kubectl auth can-i` with the same context and identity used by lcars-k8s.
 Apply `rbac.yaml` only when its cluster-wide service account permissions match
 your security requirements.
+
+### Empty network view
+
+Confirm that the controller can be discovered:
+
+```bash
+kubectl get pods -A \
+  -l app.kubernetes.io/name=ingress-nginx,app.kubernetes.io/component=controller
+```
+
+Confirm log permission and inspect the same one-minute window used by the
+dashboard. Replace the namespace and pod name with values from the first
+command:
+
+```bash
+kubectl auth can-i get pods/log -n ingress
+kubectl logs -n ingress ingress-nginx-controller-example \
+  -c controller --since=1m
+```
+
+The view only displays access requests from the last minute. Generate a request
+through an ingress and scan again if the log command is empty. Clear any active
+view filter with `Esc`. The status area distinguishes an undiscovered
+controller, a log permission or read failure, and a valid window containing no
+requests.
 
 ### Missing metrics
 
