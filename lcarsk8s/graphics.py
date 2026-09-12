@@ -104,6 +104,12 @@ class LcarsGraphics:
         self.clock = pygame.time.Clock()
         self.motion_started = time.monotonic()
         self.motion_time = 0.0
+        signal_started = time.monotonic()
+        self.signal_phases = {"top": 0, "bottom": 2}
+        self.next_signal_changes = {
+            name: signal_started + random.uniform(3.0, 5.0)
+            for name in self.signal_phases
+        }
         self.network_reveal_started = 0.0
         self.network_reveal_ids: set[str] = set()
         self.network_replay_started: float | None = None
@@ -460,6 +466,7 @@ class LcarsGraphics:
 
     def draw(self) -> None:
         self.motion_time = time.monotonic() - self.motion_started
+        self._advance_signal_rails()
         self.canvas.fill(BLACK)
         self._frame()
         self._data_sequencer()
@@ -502,7 +509,7 @@ class LcarsGraphics:
         self._text(context.upper(), main_start, 92, TAN, "label")
         self._text(version.upper(), main_end, 92, ICE, "label", "right")
         self._text(f"STARDATE {stardate()}", main_end, 127, LILAC, "small", "right")
-        self._signal_rail(main_start, 76, 1531, 10, ORANGE)
+        self._signal_rail("top", main_start, 76, 1531, 10, ORANGE)
         nav = (("02", "PODS", ORANGE), ("03", "NODES", LILAC),
                ("04", "EVENTS", TAN), ("05", "DEPLOYMENTS", PERIWINKLE),
                ("06", "NETWORK", ICE))
@@ -750,7 +757,7 @@ class LcarsGraphics:
 
     def _footer(self) -> None:
         right = self.sidebar_side == "right"
-        self._signal_rail(self._main_x(340), 998, 1556, 9, LILAC)
+        self._signal_rail("bottom", self._main_x(340), 998, 1556, 9, LILAC)
         footer_x = 1636 if right else 24
         pygame.draw.rect(self.canvas, LILAC, (footer_x, 1012, 260, 44))
         pygame.draw.rect(self.canvas, self.status_color, (24, 1036, 1872, 28), border_radius=14)
@@ -765,11 +772,18 @@ class LcarsGraphics:
             pygame.draw.circle(self.canvas, color, (light_x, 1050), 4)
         self._text(self.status, self._main_x(1870), 1041, BLACK, "small", "right")
 
-    def _signal_rail(self, x: int, y: int, width: int, height: int,
+    def _advance_signal_rails(self) -> None:
+        now = time.monotonic()
+        for name in self.signal_phases:
+            while now >= self.next_signal_changes[name]:
+                self.signal_phases[name] = (self.signal_phases[name] + 1) % 4
+                self.next_signal_changes[name] += random.uniform(3.0, 5.0)
+
+    def _signal_rail(self, name: str, x: int, y: int, width: int, height: int,
                      color: tuple[int, int, int]) -> None:
         gap = 11
         segment_width = (width - gap * 2) // 3
-        phase = int(self.motion_time / 3.0) % 4
+        phase = self.signal_phases[name]
         lit_count = phase + 1 if phase < 3 else 0
         for index in range(3):
             segment_x = x + index * (segment_width + gap)

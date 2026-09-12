@@ -310,9 +310,10 @@ when the terminal can be identified.
 
 Do not start fullscreen graphical mode as a background SSH job. Xorg needs an
 active local session and control of a local VT. The top and bottom signal rails
-run a synchronized 12-second sequence. The first segment lights for three
-seconds, the second joins it for three seconds, then the third joins for three
-seconds. All three switch off for three seconds before the sequence repeats.
+run independent four-phase sequences. The first segment lights, the second joins
+it, then the third joins. All three switch off before the sequence repeats. Each
+rail chooses a new three-to-five-second duration for every phase and begins in a
+different state, preventing synchronization or a fixed cadence.
 
 ### Desktop window preview
 
