@@ -503,11 +503,13 @@ with a controller-name fallback. Each poll reads the previous 60 seconds from
 every discovered replica, parses default-format or JSON access logs, and merges
 new requests into a deduplicated session history. The newest 500 requests are
 retained. Graphical mode clears the visible table after each refresh, then
-reveals the newest rows sequentially. It displays only the rows that fit in the
-table; terminal mode allows scrolling through the retained history. Network
-rows use ice for 2xx, lavender for 3xx, gold for 4xx, red for 5xx, and grey for
-other status families. For default-format logs, the ingress column shows the
-upstream name. Press `/` or `f` to filter the visible time, status, ingress or
+reveals the newest rows sequentially across the five-second polling cycle. It
+displays only the rows that fit in the table; terminal mode allows scrolling
+through the retained history. Graphical network row backgrounds use periwinkle
+for 2xx, lavender for 3xx, gold for 4xx, red for 5xx, and grey for other status
+families, keeping them distinct from the ice table header. Row text is black,
+and the selected row has a white outline. For default-format logs, the ingress
+column shows the upstream name. Press `/` or `f` to filter the visible time, status, ingress or
 upstream name, or path. If Ingress NGINX is absent or inaccessible, the view
 remains available and reports the condition in the status area.
 

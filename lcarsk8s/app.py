@@ -487,7 +487,7 @@ class LcarsK8s(App):
             elif entry.status >= 300:
                 colour = P.LILAC
             elif entry.status >= 200:
-                colour = P.ANAKIWA
+                colour = P.PERIWINKLE
             else:
                 colour = P.GREY
             table.add_row(

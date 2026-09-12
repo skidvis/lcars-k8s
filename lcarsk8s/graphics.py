@@ -27,7 +27,7 @@ TOMATO = (221, 102, 68)
 WHITE = (245, 246, 250)
 GREY = (92, 92, 122)
 DIM = (45, 34, 54)
-ROW_REVEAL_INTERVAL = 0.04
+ROW_REVEAL_DURATION = 5.0
 
 def shade_color(color: tuple[int, int, int], amount: float) -> tuple[int, int, int]:
     return tuple(int(channel * amount) for channel in color)
@@ -411,7 +411,7 @@ class LcarsGraphics:
         if status >= 300:
             return LILAC
         if status >= 200:
-            return ICE
+            return PERIWINKLE
         return GREY
 
     def draw(self) -> None:
@@ -628,18 +628,23 @@ class LcarsGraphics:
         if self.selected >= self.scroll + available:
             self.scroll = self.selected - available + 1
         visible = rows[self.scroll:self.scroll + available]
-        reveal_count = max(
-            0, int((time.monotonic() - self.row_reveal_started) / ROW_REVEAL_INTERVAL))
-        visible = visible[:reveal_count]
+        reveal_progress = min(
+            1.0, max(0.0, (time.monotonic() - self.row_reveal_started)
+                     / ROW_REVEAL_DURATION))
+        visible = visible[:int(len(visible) * reveal_progress)]
         for index, item in enumerate(visible):
             row_index = self.scroll + index
             ry = header_y + 40 + index * row_height
-            if row_index == self.selected:
-                selection_color = (self._network_status_color(item.status)
-                                   if self.view == "network" else LILAC)
-                pygame.draw.rect(self.canvas, selection_color,
-                                 (x, ry - 1, width, row_height))
             selected = row_index == self.selected
+            if self.view == "network":
+                background = self._network_status_color(item.status)
+                pygame.draw.rect(self.canvas, background,
+                                 (x, ry - 1, width, row_height - 2))
+                if selected:
+                    pygame.draw.rect(self.canvas, WHITE,
+                                     (x, ry - 1, width, row_height - 2), width=2)
+            elif selected:
+                pygame.draw.rect(self.canvas, LILAC, (x, ry - 1, width, row_height))
             self._table_row(item, x, ry, selected)
 
     def _table_row(self, item, x: int, y: int, selected: bool) -> None:
@@ -673,11 +678,10 @@ class LcarsGraphics:
                       (item.strategy, 1400, LILAC),
                       (humanize_age(item.created), 1510, GREY))
         elif self.view == "network":
-            status_color = self._network_status_color(item.status)
-            values = ((item.time, 18, status_color),
-                      (str(item.status), 390, status_color),
-                      (item.ingress, 520, status_color),
-                      (item.path, 900, status_color))
+            values = ((item.time, 18, BLACK),
+                      (str(item.status), 390, BLACK),
+                      (item.ingress, 520, BLACK),
+                      (item.path, 900, BLACK))
         else:
             warning = item.type != "Normal"
             values = ((humanize_age(item.last), 18, GREY), (item.type, 120, MARS if warning else ICE),
