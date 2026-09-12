@@ -6,8 +6,8 @@ lcars-k8s is a Kubernetes operations dashboard with two interfaces:
 - A responsive Textual terminal interface for SSH, Kmscon, FbTerm, and ordinary terminals
 
 It displays cluster CPU and memory history, node utilization, pods, deployments,
-events, container logs, pod details, and Kubernetes manifests. The dashboard is
-strictly read-only.
+events, container logs, Ingress NGINX request logs, pod details, and Kubernetes
+manifests. The dashboard is strictly read-only.
 
 ![Animated pixel-rendered LCARS dashboard](preview-graphics.gif)
 
@@ -225,6 +225,8 @@ lcars-k8s --namespace kube-system
 lcars-k8s --interval 5
 lcars-k8s --timeout 20
 lcars-k8s --view nodes
+lcars-k8s --view network
+lcars-k8s --view network --network-status 404 --network-path /api/
 ```
 
 The terminal layout adapts down to 80 columns by 24 rows. A terminal with at
@@ -432,6 +434,7 @@ Do not set `COLORTERM=truecolor` for FbTerm.
 | `3` | open nodes |
 | `4` | open events |
 | `5` | open deployments |
+| `6` | open Ingress NGINX network logs from the last minute |
 | `Tab` | cycle through views |
 | `n` | select the next namespace |
 | `a` | show all namespaces |
@@ -472,6 +475,10 @@ lcars-k8s [options]
 | `--view nodes` or `--view 3` | start in the nodes view |
 | `--view events` or `--view 4` | start in the events view |
 | `--view deployments` or `--view 5` | start in the deployments view |
+| `--view network` or `--view 6` | start in the Ingress NGINX network log view |
+| `--network-status STATUS` | include one HTTP status; repeat to include several |
+| `--network-ingress TEXT` | include ingress names containing the text |
+| `--network-path TEXT` | include request paths containing the text |
 | `--timeout SECONDS` | set the API request timeout, default 10 seconds |
 | `--graphics` | use the pixel-rendered SDL interface |
 | `--windowed` | use a resizable desktop window with graphical mode |
@@ -490,6 +497,13 @@ lcars-k8s [options]
 
 Display modifiers such as `--windowed`, `--direct-kms`, and `--resolution` are
 intended to be used with `--graphics`.
+
+The network view discovers controller pods by the standard Ingress NGINX labels,
+with a controller-name fallback. It reads JSON log lines from every discovered
+replica using a 60-second window. Press `/` or `f` to filter the visible time,
+status, ingress name, or path. If Ingress NGINX is absent, inaccessible, or not
+configured for JSON access logs, the view remains available and reports the
+condition in the status area.
 
 ## Troubleshooting
 

@@ -11,7 +11,8 @@ from lcarsk8s.graphics import LcarsGraphics
 source = DemoSource()
 app = LcarsGraphics(source, interval=60, windowed=True, resolution=(1280, 720))
 app.snapshot = source.snapshot(want_events=True)
-keys = [pygame.K_3, pygame.K_4, pygame.K_5, pygame.K_2, pygame.K_TAB, pygame.K_TAB,
+keys = [pygame.K_3, pygame.K_4, pygame.K_5, pygame.K_6, pygame.K_2, pygame.K_TAB,
+        pygame.K_TAB,
         pygame.K_n, pygame.K_a, pygame.K_SLASH, pygame.K_w, pygame.K_ESCAPE,
         pygame.K_PERIOD, pygame.K_COMMA, pygame.K_r, pygame.K_1, pygame.K_1,
         pygame.K_SPACE, pygame.K_SPACE, pygame.K_PLUS, pygame.K_MINUS,

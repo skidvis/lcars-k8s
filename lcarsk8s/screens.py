@@ -158,7 +158,7 @@ class HelpScreen(LcarsModal):
     SECTIONS = (
         ("VIEWS", (
             ("1", "show or hide the cluster graphs"),
-            ("2 / 3 / 4 / 5", "pods · nodes · events · deployments"),
+            ("2 / 3 / 4 / 5 / 6", "pods · nodes · events · deployments · network logs"),
             ("TAB", "cycle through the views"),
         )),
         ("SCOPE", (

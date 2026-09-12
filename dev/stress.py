@@ -5,7 +5,7 @@ if "--console" in sys.argv:
 from lcarsk8s.app import LcarsK8s
 from lcarsk8s.cluster import DemoSource
 
-SEQ = ["3","4","5","2","tab","tab","n","n","a","slash","w","e","b","escape",
+SEQ = ["3","4","5","6","2","tab","tab","n","n","a","slash","w","e","b","escape",
        "full_stop","full_stop","comma","r","1","1","space","space",
        "plus","minus","ctrl+r","down","down","d","m","escape","l","c","p","escape",
        "question_mark","escape","3","r","2","end","home"]
@@ -16,12 +16,12 @@ async def main():
         await pilot.pause()
         for _ in range(30):
             src._birth -= 0.7
-            app.ingest(src.snapshot(want_events=True))
+            app.ingest(src.snapshot(want_events=True, want_network=True))
         await pilot.pause()
         for key in SEQ:
             await pilot.press(key)
             await pilot.pause()
-            app.ingest(src.snapshot(want_events=True))
+            app.ingest(src.snapshot(want_events=True, want_network=True))
             await pilot.pause()
         print("OK — survived", len(SEQ), "keys; view:", app.view,
               "ns:", repr(app.namespace), "filter:", repr(app.filter_text),

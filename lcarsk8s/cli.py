@@ -25,10 +25,17 @@ def build_parser() -> argparse.ArgumentParser:
                         help="seconds between scans (default: 2)")
     parser.add_argument(
         "--view",
-        choices=("pods", "nodes", "events", "deployments", "2", "3", "4", "5"),
+        choices=("pods", "nodes", "events", "deployments", "network",
+                 "2", "3", "4", "5", "6"),
         default="pods", help="view to open on (default: pods)")
     parser.add_argument("--timeout", type=int, default=10,
                         help="apiserver request timeout in seconds (default: 10)")
+    parser.add_argument("--network-status", type=int, action="append", default=[],
+                        help="include an HTTP status in network logs; repeat for more")
+    parser.add_argument("--network-ingress", default="",
+                        help="include ingress names containing this text")
+    parser.add_argument("--network-path", default="",
+                        help="include request paths containing this text")
     display = parser.add_argument_group("display")
     renderer = display.add_mutually_exclusive_group()
     renderer.add_argument(
@@ -75,7 +82,7 @@ def main(argv: list[str] | None = None) -> int:
     raw_args = list(argv) if argv is not None else sys.argv[1:]
     args = build_parser().parse_args(raw_args)
     args.view = {"2": "pods", "3": "nodes", "4": "events",
-                 "5": "deployments"}.get(args.view, args.view)
+                 "5": "deployments", "6": "network"}.get(args.view, args.view)
 
     if args.kmscon:
         os.environ["TERM"] = "xterm-256color"
@@ -148,7 +155,10 @@ def main(argv: list[str] | None = None) -> int:
                 source, interval=max(0.5, args.interval),
                 namespace=args.namespace, view=args.view,
                 windowed=args.windowed, resolution=resolution,
-                sidebar=args.sidebar, show_graphs=not args.no_graphs).run()
+                sidebar=args.sidebar, show_graphs=not args.no_graphs,
+                network_status=tuple(args.network_status),
+                network_ingress=args.network_ingress,
+                network_path=args.network_path).run()
         except Exception as error:
             print(f"lcars-k8s: graphical display failed: {error}", file=sys.stderr)
             print("Switch away from Kmscon before direct KMS/DRM mode, or use "
@@ -159,7 +169,10 @@ def main(argv: list[str] | None = None) -> int:
 
     app = LcarsK8s(source, interval=max(0.5, args.interval),
                    namespace=args.namespace, view=args.view,
-                   sidebar=args.sidebar, show_graphs=not args.no_graphs)
+                   sidebar=args.sidebar, show_graphs=not args.no_graphs,
+                   network_status=tuple(args.network_status),
+                   network_ingress=args.network_ingress,
+                   network_path=args.network_path)
     app.run()
     return 0
 

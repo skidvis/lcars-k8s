@@ -173,7 +173,8 @@ class LcarsSidebar(Widget):
     NAV = (("pods", "02  PODS", P.ORANGE),
            ("nodes", "03  NODES", P.LILAC),
            ("events", "04  EVENTS", P.TAN),
-           ("deployments", "05  DEPLOYMENTS", P.PERIWINKLE))
+           ("deployments", "05  DEPLOYMENTS", P.PERIWINKLE),
+           ("network", "06  NETWORK LOGS", P.ANAKIWA))
 
     class Selected(Message):
         def __init__(self, kind: str, value: str) -> None:

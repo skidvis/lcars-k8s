@@ -8,6 +8,7 @@ which synthesises a plausible cluster for previewing the interface.
 
 from __future__ import annotations
 
+import json
 import math
 import random
 import re
@@ -189,6 +190,14 @@ class Event:
 
 
 @dataclass
+class NetworkLog:
+    time: str
+    status: int
+    ingress: str
+    path: str
+
+
+@dataclass
 class Snapshot:
     taken: float = field(default_factory=time.time)
     context: str = "-"
@@ -198,6 +207,8 @@ class Snapshot:
     deployments: list[Deployment] = field(default_factory=list)
     namespaces: list[str] = field(default_factory=list)
     events: list[Event] = field(default_factory=list)
+    network_logs: list[NetworkLog] = field(default_factory=list)
+    network_message: str = ""
     metrics_available: bool = False
     errors: list[str] = field(default_factory=list)
 
@@ -331,7 +342,8 @@ class KubeSource:
         return result
 
     # -- main fetch ------------------------------------------------------
-    def snapshot(self, want_events: bool = False) -> Snapshot:
+    def snapshot(self, want_events: bool = False,
+                 want_network: bool = False) -> Snapshot:
         errors: list[str] = []
         snap = Snapshot(context=self.context, server_version=self._server())
 
@@ -405,6 +417,9 @@ class KubeSource:
             except Exception as exc:
                 errors.append(f"events unavailable ({_brief(exc)})")
 
+        if want_network:
+            snap.network_logs, snap.network_message = self.network_log_entries(pod_list)
+
         snap.errors = errors
         return snap
 
@@ -415,11 +430,77 @@ class KubeSource:
             name=name, namespace=namespace, container=container, tail_lines=tail,
             previous=previous, timestamps=False, _request_timeout=self.timeout)
 
+    def network_log_entries(self, pod_list=None) -> tuple[list[NetworkLog], str]:
+        try:
+            pods = pod_list
+            if pods is None:
+                pods = self.core.list_pod_for_all_namespaces(
+                    label_selector=("app.kubernetes.io/name=ingress-nginx,"
+                                    "app.kubernetes.io/component=controller"),
+                    _request_timeout=self.timeout).items
+            controllers = [pod for pod in pods if _is_ingress_controller(pod)]
+        except Exception as exc:
+            return [], f"ingress discovery unavailable ({_brief(exc)})"
+        if not controllers:
+            return [], "Ingress NGINX controller not detected"
+
+        entries: list[NetworkLog] = []
+        failures: list[str] = []
+        for pod in controllers:
+            try:
+                containers = getattr(getattr(pod, "spec", None), "containers", []) or []
+                names = [container.name for container in containers]
+                container = ("controller" if "controller" in names else
+                             names[0] if len(names) > 1 else None)
+                raw = self.core.read_namespaced_pod_log(
+                    name=pod.metadata.name, namespace=pod.metadata.namespace,
+                    container=container, since_seconds=60, timestamps=False,
+                    _request_timeout=self.timeout)
+                entries.extend(parse_network_logs(raw))
+            except Exception as exc:
+                failures.append(_brief(exc))
+        entries.sort(key=lambda entry: entry.time, reverse=True)
+        if entries:
+            message = f"{len(controllers)} ingress controller pod(s)"
+            if failures:
+                message += f", {len(failures)} log read failed"
+            return entries, message
+        if failures:
+            return [], f"ingress logs unavailable ({failures[0]})"
+        return [], "No JSON ingress requests in the last minute"
 
     def describe_pod(self, namespace: str, name: str) -> dict:
         pod = self.core.read_namespaced_pod(name=name, namespace=namespace,
                                             _request_timeout=self.timeout)
         return self._client.ApiClient().sanitize_for_serialization(pod)
+
+
+def _is_ingress_controller(raw) -> bool:
+    metadata = getattr(raw, "metadata", None)
+    labels = (getattr(metadata, "labels", None) or {}) if metadata else {}
+    name = (getattr(metadata, "name", "") or "") if metadata else ""
+    labelled = (
+        labels.get("app.kubernetes.io/name") == "ingress-nginx"
+        and labels.get("app.kubernetes.io/component") == "controller"
+    )
+    return labelled or name.startswith("ingress-nginx-controller-")
+
+
+def parse_network_logs(raw: str) -> list[NetworkLog]:
+    entries = []
+    for line in raw.splitlines():
+        try:
+            value = json.loads(line)
+            status = int(value.get("status"))
+        except (AttributeError, TypeError, ValueError, json.JSONDecodeError):
+            continue
+        entries.append(NetworkLog(
+            time=str(value.get("time", "-")),
+            status=status,
+            ingress=str(value.get("ingress", "-")),
+            path=str(value.get("path", "-")),
+        ))
+    return entries
 
 
 def _brief(exc: Exception) -> str:
@@ -651,7 +732,8 @@ class DemoSource:
                 ))
         self._birth = time.time()
 
-    def snapshot(self, want_events: bool = False) -> Snapshot:
+    def snapshot(self, want_events: bool = False,
+                 want_network: bool = False) -> Snapshot:
         self.tick += 1
         now = datetime.now(timezone.utc)
         elapsed = time.time() - self._birth
@@ -716,6 +798,18 @@ class DemoSource:
                     count=self.random.randint(1, 12),
                     last=datetime.fromtimestamp(time.time() - index * 37, timezone.utc),
                 ))
+        if want_network:
+            statuses = (200, 200, 200, 201, 204, 301, 304, 400, 404, 429, 500, 502)
+            paths = ("/", "/healthz", "/api/orders", "/login", "/assets/app.js")
+            for index in range(36):
+                when = datetime.fromtimestamp(time.time() - index * 1.6, timezone.utc)
+                snap.network_logs.append(NetworkLog(
+                    time=when.isoformat(timespec="seconds"),
+                    status=statuses[index % len(statuses)],
+                    ingress=("web-ingress" if index % 3 else "api-ingress"),
+                    path=paths[index % len(paths)],
+                ))
+            snap.network_message = "1 ingress controller pod (demo)"
         return snap
 
     def pod_logs(self, namespace: str, name: str, container: str | None = None,

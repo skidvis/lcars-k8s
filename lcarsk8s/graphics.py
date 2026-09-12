@@ -48,7 +48,9 @@ class LcarsGraphics:
     def __init__(self, source, interval: float = 2.0, namespace: str = "",
                  view: str = "pods", windowed: bool = False,
                  resolution: tuple[int, int] | None = None,
-                 sidebar: str = "left", show_graphs: bool = True) -> None:
+                 sidebar: str = "left", show_graphs: bool = True,
+                 network_status: tuple[int, ...] = (), network_ingress: str = "",
+                 network_path: str = "") -> None:
         pygame.display.init()
         pygame.font.init()
         flags = pygame.RESIZABLE if windowed else pygame.FULLSCREEN
@@ -74,6 +76,9 @@ class LcarsGraphics:
         self.history_mem: list[float] = []
         self.paused = False
         self.show_graphs = show_graphs
+        self.network_status = network_status
+        self.network_ingress = network_ingress.lower()
+        self.network_path = network_path.lower()
         self.filter_text = ""
         self.filtering = False
         self.sort_index = 5
@@ -128,7 +133,7 @@ class LcarsGraphics:
     def _start_poll(self) -> None:
         if self.poll_future is None:
             self.poll_future = self.executor.submit(
-                self.source.snapshot, self.view == "events")
+                self.source.snapshot, self.view == "events", self.view == "network")
             self.last_poll = time.monotonic()
 
     def _collect(self) -> None:
@@ -138,8 +143,10 @@ class LcarsGraphics:
                 self.snapshot = future.result()
                 self.history_cpu = (self.history_cpu + [self.snapshot.cpu_fraction])[-240:]
                 self.history_mem = (self.history_mem + [self.snapshot.mem_fraction])[-240:]
-                self.status = "SENSORS ONLINE"
-                self.status_color = ICE
+                self.status = (self.snapshot.network_message
+                               if self.view == "network" else "SENSORS ONLINE")
+                self.status_color = (GOLD if self.view == "network"
+                                     and not self.snapshot.network_logs else ICE)
                 self.selected = min(self.selected, max(0, len(self._rows()) - 1))
             except Exception as error:
                 self.status = f"APISERVER {error.__class__.__name__}"
@@ -200,14 +207,16 @@ class LcarsGraphics:
             self.running = False
         elif key == pygame.K_1:
             self.show_graphs = not self.show_graphs
-        elif key in (pygame.K_2, pygame.K_3, pygame.K_4, pygame.K_5):
+        elif key in (pygame.K_2, pygame.K_3, pygame.K_4, pygame.K_5,
+                      pygame.K_6):
             self.view = {pygame.K_2: "pods", pygame.K_3: "nodes",
-                         pygame.K_4: "events", pygame.K_5: "deployments"}[key]
+                         pygame.K_4: "events", pygame.K_5: "deployments",
+                         pygame.K_6: "network"}[key]
             self.selected = 0
             self.scroll = 0
             self._start_poll()
         elif key == pygame.K_TAB:
-            order = ("pods", "nodes", "events", "deployments")
+            order = ("pods", "nodes", "events", "deployments", "network")
             self.view = order[(order.index(self.view) + 1) % len(order)]
             self.selected = 0
             self.scroll = 0
@@ -262,7 +271,7 @@ class LcarsGraphics:
         self.modal_title = "OPERATIONS MANUAL"
         self.modal_text = [
             "1                 SHOW OR HIDE CLUSTER GRAPHS",
-            "2 / 3 / 4 / 5     PODS / NODES / EVENTS / DEPLOYMENTS",
+            "2 / 3 / 4 / 5 / 6 PODS / NODES / EVENTS / DEPLOYMENTS / NETWORK LOGS",
             "TAB               CYCLE VIEWS",
             "N / A             NEXT NAMESPACE / ALL NAMESPACES",
             "/ OR F            FILTER CURRENT VIEW",
@@ -373,6 +382,14 @@ class LcarsGraphics:
             return sorted(deployments,
                           key=lambda deployment: (deployment.name.casefold(),
                                                   deployment.namespace.casefold()))
+        if self.view == "network":
+            return [entry for entry in self.snapshot.network_logs
+                    if (not self.network_status or entry.status in self.network_status)
+                    and (not self.network_ingress or
+                         self.network_ingress in entry.ingress.lower())
+                    and (not self.network_path or self.network_path in entry.path.lower())
+                    and (not needle or needle in
+                         f"{entry.time} {entry.status} {entry.ingress} {entry.path}".lower())]
         return [event for event in self.snapshot.events
                 if (not self.namespace or event.namespace == self.namespace)
                 and (not needle or needle in
@@ -424,7 +441,8 @@ class LcarsGraphics:
         self._text(f"STARDATE {stardate()}", main_end, 127, LILAC, "small", "right")
         self._scanner_rail(main_start, 76, 1531, 10, ORANGE, 0.0)
         nav = (("02", "PODS", ORANGE), ("03", "NODES", LILAC),
-               ("04", "EVENTS", TAN), ("05", "DEPLOYMENTS", PERIWINKLE))
+               ("04", "EVENTS", TAN), ("05", "DEPLOYMENTS", PERIWINKLE),
+               ("06", "NETWORK", ICE))
         y = 190
         for key, label, color in nav:
             active = self.view == label.lower()
@@ -546,12 +564,18 @@ class LcarsGraphics:
         rows = self._rows()
         title = self.view.upper()
         color = {"pods": ORANGE, "nodes": LILAC, "events": TAN,
-                 "deployments": PERIWINKLE}[self.view]
+                 "deployments": PERIWINKLE, "network": ICE}[self.view]
         pygame.draw.rect(self.canvas, color, (x, y, width, 42), border_radius=21)
         self._text(title, x + 22, y + 8, BLACK, "label")
         right = f"{len(rows)} SHOWN"
-        if self.namespace:
+        if self.namespace and self.view != "network":
             right += f"   NS {self.namespace}"
+        if self.view == "network" and self.network_status:
+            right += "   STATUS " + ",".join(str(value) for value in self.network_status)
+        if self.view == "network" and self.network_ingress:
+            right += f"   INGRESS {self.network_ingress}"
+        if self.view == "network" and self.network_path:
+            right += f"   PATH {self.network_path}"
         if self.view == "pods":
             right += f"   SORT {SORTS[self.sort_index][1]}{'▼' if self.sort_reverse else '▲'}"
         self._text(right, x + width - 22, y + 10, BLACK, "small", "right")
@@ -570,6 +594,9 @@ class LcarsGraphics:
                        ("UP-TO-DATE", 860), ("AVAILABLE", 1050),
                        ("UNAVAILABLE", 1220), ("STRATEGY", 1400),
                        ("AGE", 1510))
+        elif self.view == "network":
+            columns = (("TIME", 18), ("STATUS", 390), ("INGRESS", 520),
+                       ("PATH", 900))
         else:
             columns = (("AGE", 18), ("TYPE", 120), ("REASON", 240),
                        ("NS", 500), ("OBJECT", 700), ("N", 1040),
@@ -620,6 +647,12 @@ class LcarsGraphics:
                       (str(item.unavailable), 1220, MARS if item.unavailable else GREY),
                       (item.strategy, 1400, LILAC),
                       (humanize_age(item.created), 1510, GREY))
+        elif self.view == "network":
+            status_color = (MARS if item.status >= 500 else
+                            GOLD if item.status >= 400 else
+                            LILAC if item.status >= 300 else ICE)
+            values = ((item.time, 18, GREY), (str(item.status), 390, status_color),
+                      (item.ingress, 520, PERIWINKLE), (item.path, 900, fg))
         else:
             warning = item.type != "Normal"
             values = ((humanize_age(item.last), 18, GREY), (item.type, 120, MARS if warning else ICE),
@@ -652,7 +685,7 @@ class LcarsGraphics:
         pygame.draw.rect(self.canvas, self.status_color, (24, 1036, 1872, 28), border_radius=14)
         edge_x = 1856 if right else 24
         pygame.draw.rect(self.canvas, self.status_color, (edge_x, 1036, 40, 28))
-        legend = "2-5 VIEW   N NAMESPACE   / FILTER   <> SORT   R REVERSE   L LOGS   D DETAIL   SPACE HOLD   ? HELP   Q QUIT"
+        legend = "2-6 VIEW   N NAMESPACE   / FILTER   <> SORT   R REVERSE   L LOGS   D DETAIL   SPACE HOLD   ? HELP   Q QUIT"
         self._text(legend, self._main_x(340), 1018, TAN, "tiny")
         light = int(self.motion_time * 2.68) % 3
         for index in range(3):

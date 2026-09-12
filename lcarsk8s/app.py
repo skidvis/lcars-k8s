@@ -63,7 +63,7 @@ POD_SORTS = (
     ("node", "NODE", lambda p: (p.node, p.name)),
 )
 
-KEY_LEGEND = ("2-5:view  n:ns  /:filter  <>:sort  r:rev  l:logs  d:detail  "
+KEY_LEGEND = ("2-6:view  n:ns  /:filter  <>:sort  r:rev  l:logs  d:detail  "
               "space:hold  ?:help  q:quit")
 
 
@@ -119,6 +119,7 @@ class LcarsK8s(App):
         Binding("3", "view('nodes')", "Nodes", show=False),
         Binding("4", "view('events')", "Events", show=False),
         Binding("5", "view('deployments')", "Deployments", show=False),
+        Binding("6", "view('network')", "Network Logs", show=False),
         Binding("tab", "cycle_view", "Next view", show=False),
         Binding("n", "cycle_namespace", "Namespace", show=False),
         Binding("a", "all_namespaces", "All namespaces", show=False),
@@ -141,7 +142,8 @@ class LcarsK8s(App):
 
     def __init__(self, source, interval: float = 2.0, namespace: str = "",
                  view: str = "pods", sidebar: str = "left",
-                 show_graphs: bool = True) -> None:
+                 show_graphs: bool = True, network_status: tuple[int, ...] = (),
+                 network_ingress: str = "", network_path: str = "") -> None:
         super().__init__()
         self.source = source
         self.interval = interval
@@ -149,6 +151,9 @@ class LcarsK8s(App):
         self.view = view
         self.sidebar_side = sidebar
         self.show_graphs = show_graphs
+        self.network_status = network_status
+        self.network_ingress = network_ingress.lower()
+        self.network_path = network_path.lower()
         self.snapshot: Snapshot | None = None
         self.filter_text = ""
         self.sort_index = 5
@@ -189,6 +194,8 @@ class LcarsK8s(App):
                     yield DataTable(id="events", classes="hidden", zebra_stripes=False,
                                     cursor_type="row", header_height=1)
                     yield DataTable(id="deployments", classes="hidden", zebra_stripes=False,
+                                    cursor_type="row", header_height=1)
+                    yield DataTable(id="network", classes="hidden", zebra_stripes=False,
                                     cursor_type="row", header_height=1)
                 yield Input(placeholder="FILTER — name, namespace, node or status",
                             id="filter")
@@ -245,6 +252,13 @@ class LcarsK8s(App):
         ):
             deployments.add_column(Text(label), key=key, width=width)
 
+        network = self.query_one("#network", DataTable)
+        for label, key, width in (
+            ("TIME", "time", 30), ("STATUS", "status", 8),
+            ("INGRESS", "ingress", 32), ("PATH", "path", 70),
+        ):
+            network.add_column(Text(label), key=key, width=width)
+
     # -- polling ---------------------------------------------------------
     def _schedule(self) -> None:
         if self._timer is not None:
@@ -264,7 +278,9 @@ class LcarsK8s(App):
     @work(exclusive=True, thread=True, group="poll")
     def _poll(self) -> None:
         try:
-            snapshot = self.source.snapshot(want_events=self.view == "events")
+            snapshot = self.source.snapshot(
+                want_events=self.view == "events",
+                want_network=self.view == "network")
         except ClusterError as error:
             self.call_from_thread(self.set_status, str(error), P.MARS)
             self.call_from_thread(self._done)
@@ -308,8 +324,12 @@ class LcarsK8s(App):
         self._fill_nodes()
         self._fill_events()
         self._fill_deployments()
+        self._fill_network()
         self._update_table_bar()
 
+        if self.view == "network" and snapshot.network_message:
+            colour = (P.SUNFLOWER if not snapshot.network_logs else P.ANAKIWA)
+            self.set_status(snapshot.network_message, colour)
         if snapshot.errors and not self.paused:
             self.set_status(" · ".join(snapshot.errors)[:120], P.SUNFLOWER)
 
@@ -446,6 +466,37 @@ class LcarsK8s(App):
             )
         self._restore(table, selected, offset)
 
+    def _fill_network(self) -> None:
+        if not self.snapshot:
+            return
+        table = self.query_one("#network", DataTable)
+        offset = table.scroll_offset.y
+        entries = [entry for entry in self.snapshot.network_logs
+                   if (not self.network_status or entry.status in self.network_status)
+                   and (not self.network_ingress or
+                        self.network_ingress in entry.ingress.lower())
+                   and (not self.network_path or self.network_path in entry.path.lower())
+                   and self._matches(str(entry.status), entry.ingress, entry.path,
+                                     entry.time)]
+        table.clear()
+        for index, entry in enumerate(entries):
+            if entry.status >= 500:
+                colour = P.MARS
+            elif entry.status >= 400:
+                colour = P.SUNFLOWER
+            elif entry.status >= 300:
+                colour = P.LILAC
+            else:
+                colour = P.ANAKIWA
+            table.add_row(
+                Text(entry.time, style=P.GREY),
+                Text(str(entry.status), style=Style(color=colour, bold=True)),
+                Text(entry.ingress, style=P.PERIWINKLE),
+                Text(entry.path, style=P.TAN),
+                key=str(index),
+            )
+        table.scroll_to(y=offset, animate=False)
+
     def _fill_events(self) -> None:
         if not self.snapshot or not self.snapshot.events:
             return
@@ -492,20 +543,32 @@ class LcarsK8s(App):
         width = self.query_one("#table-bar", Static).size.width or 80
         _, column, _ = POD_SORTS[self.sort_index]
         titles = {"pods": "PODS", "nodes": "NODES", "events": "EVENTS",
-                  "deployments": "DEPLOYMENTS"}
+                  "deployments": "DEPLOYMENTS", "network": "NETWORK LOGS"}
         counts = {"pods": len(self.visible_pods),
                   "nodes": len(self.visible_nodes),
                   "events": len(self.snapshot.events) if self.snapshot else 0,
-                  "deployments": len(self.visible_deployments)}
+                  "deployments": len(self.visible_deployments),
+                  "network": (self.query_one("#network", DataTable).row_count
+                              if self.is_mounted else 0)}
         colour = {"pods": P.ORANGE, "nodes": P.LILAC, "events": P.TAN,
-                  "deployments": P.PERIWINKLE}[self.view]
+                  "deployments": P.PERIWINKLE, "network": P.ANAKIWA}[self.view]
 
         value = Text()
         value.append(f"{counts[self.view]} ", style=P.TAN)
         value.append("SHOWN", style=P.GREY)
-        if self.namespace:
+        if self.namespace and self.view != "network":
             value.append("  NS ", style=P.GREY)
             value.append(self.namespace, style=P.ANAKIWA)
+        if self.view == "network" and self.network_status:
+            value.append("  STATUS ", style=P.GREY)
+            value.append(",".join(str(status) for status in self.network_status),
+                         style=P.SUNFLOWER)
+        if self.view == "network" and self.network_ingress:
+            value.append("  INGRESS ", style=P.GREY)
+            value.append(self.network_ingress, style=P.PERIWINKLE)
+        if self.view == "network" and self.network_path:
+            value.append("  PATH ", style=P.GREY)
+            value.append(self.network_path, style=P.TAN)
         if self.filter_text:
             value.append("  FILTER ", style=P.GREY)
             value.append(self.filter_text, style=P.SUNFLOWER)
@@ -540,7 +603,7 @@ class LcarsK8s(App):
 
     # -- view plumbing ---------------------------------------------------
     def _apply_view(self) -> None:
-        for name in ("pods", "nodes", "events", "deployments"):
+        for name in ("pods", "nodes", "events", "deployments", "network"):
             self.query_one(f"#{name}", DataTable).set_class(name != self.view, "hidden")
         self.query_one(LcarsSidebar).view = self.view
         table = self.query_one(f"#{self.view}", DataTable)
@@ -555,11 +618,11 @@ class LcarsK8s(App):
             return
         self.view = name
         self._apply_view()
-        if name == "events":
+        if name in ("events", "network"):
             self.refresh_data()
 
     def action_cycle_view(self) -> None:
-        order = ["pods", "nodes", "events", "deployments"]
+        order = ["pods", "nodes", "events", "deployments", "network"]
         self.action_view(order[(order.index(self.view) + 1) % len(order)])
 
     def action_toggle_meters(self) -> None:
@@ -589,6 +652,7 @@ class LcarsK8s(App):
             self._fill_pods()
             self._fill_events()
             self._fill_deployments()
+            self._fill_network()
             self._update_table_bar()
 
     def on_lcars_sidebar_selected(self, message: LcarsSidebar.Selected) -> None:
@@ -662,6 +726,7 @@ class LcarsK8s(App):
                 self._fill_nodes()
                 self._fill_events()
                 self._fill_deployments()
+                self._fill_network()
             self._update_table_bar()
             self.query_one(f"#{self.view}", DataTable).focus()
 
@@ -672,6 +737,7 @@ class LcarsK8s(App):
             self._fill_nodes()
             self._fill_events()
             self._fill_deployments()
+            self._fill_network()
         self._update_table_bar()
 
     def on_input_submitted(self) -> None:
