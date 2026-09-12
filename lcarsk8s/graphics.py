@@ -122,15 +122,20 @@ class LcarsGraphics:
         self._start_poll()
 
     def _fonts(self) -> dict[str, pygame.font.Font]:
-        bundled = Path(__file__).resolve().parent / "assets" / "Antonio.ttf"
-        source = str(bundled) if bundled.exists() else pygame.font.match_font("dejavusans")
+        assets = Path(__file__).resolve().parent / "assets"
+        display_font = assets / "Antonio.ttf"
+        body_font = assets / "AtkinsonHyperlegibleNext-Regular.ttf"
+        display_source = (str(display_font) if display_font.exists()
+                          else pygame.font.match_font("dejavusanscondensed"))
+        body_source = (str(body_font) if body_font.exists()
+                       else pygame.font.match_font("dejavusans"))
         return {
-            "hero": pygame.font.Font(source, 46),
-            "title": pygame.font.Font(source, 32),
-            "label": pygame.font.Font(source, 25),
-            "body": pygame.font.Font(source, 22),
-            "small": pygame.font.Font(source, 18),
-            "tiny": pygame.font.Font(source, 15),
+            "hero": pygame.font.Font(body_source, 46),
+            "title": pygame.font.Font(display_source, 32),
+            "label": pygame.font.Font(display_source, 25),
+            "body": pygame.font.Font(body_source, 22),
+            "small": pygame.font.Font(body_source, 18),
+            "tiny": pygame.font.Font(body_source, 15),
         }
 
     def run(self) -> int:

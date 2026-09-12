@@ -20,7 +20,7 @@ typography:
     fontWeight: 500
     lineHeight: 1
   body:
-    fontFamily: "Antonio, DejaVu Sans, sans-serif"
+    fontFamily: "Atkinson Hyperlegible Next, DejaVu Sans, sans-serif"
     fontSize: "22px at 1920x1080"
     fontWeight: 400
     lineHeight: 1.15
@@ -96,10 +96,10 @@ Warm colors build the frame, cool colors carry healthy telemetry, lavender marks
 ## Typography
 
 **Display Font:** Antonio
-**Body Font:** Antonio
+**Body Font:** Atkinson Hyperlegible Next
 **Fallback Font:** DejaVu Sans
 
-**Character:** Tall, condensed lettering echoes the Swiss 911 character of production LCARS panels while leaving enough horizontal room for Kubernetes identifiers. Size, weight, color fields, and alignment create a clear hierarchy.
+**Character:** Tall, condensed Antonio lettering preserves the LCARS identity in titles and navigation. Atkinson Hyperlegible Next improves character recognition in operational data, including Kubernetes identifiers, IP addresses, paths, metrics, and logs. Size, weight, color fields, and alignment create a clear hierarchy.
 
 ### Hierarchy
 - **Display:** Large telemetry values inside graph wells.

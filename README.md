@@ -681,7 +681,8 @@ See `dev/README.md` for helper arguments and expected output.
 | `lcarsk8s/screens.py` | terminal modals for help, logs, and details |
 | `lcarsk8s/palette.py` | LCARS terminal palettes and load gradients |
 | `lcarsk8s/glyphs.py` | terminal graphs, meters, elbows, and pills |
-| `lcarsk8s/assets/Antonio.ttf` | bundled LCARS display typeface |
+| `lcarsk8s/assets/Antonio.ttf` | bundled LCARS title and navigation typeface |
+| `lcarsk8s/assets/AtkinsonHyperlegibleNext-Regular.ttf` | bundled accessible data typeface |
 | `rbac.yaml` | optional Kubernetes service account and permissions |
 | `kmscon-lcars.conf` | optional Kmscon font and palette configuration |
 | `install.sh` | Ubuntu dependency and private environment installer |
@@ -692,5 +693,6 @@ The graphical and terminal renderers share the same Kubernetes data layer.
 ## License
 
 The application is licensed under the MIT License in `LICENSE`. The bundled
-Antonio typeface is distributed under the SIL Open Font License in
-`lcarsk8s/assets/Antonio-OFL.txt`.
+Antonio and Atkinson Hyperlegible Next typefaces are distributed under the SIL
+Open Font License. Their licenses are in `lcarsk8s/assets/Antonio-OFL.txt` and
+`lcarsk8s/assets/AtkinsonHyperlegibleNext-OFL.txt`.
