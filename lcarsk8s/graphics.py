@@ -769,11 +769,12 @@ class LcarsGraphics:
                      color: tuple[int, int, int]) -> None:
         gap = 11
         segment_width = (width - gap * 2) // 3
-        active = int(self.motion_time / 0.75) % 3
+        phase = int(self.motion_time / 3.0) % 4
+        lit_count = phase + 1 if phase < 3 else 0
         for index in range(3):
             segment_x = x + index * (segment_width + gap)
             segment_end = x + width if index == 2 else segment_x + segment_width
-            segment_color = color if index == active else shade_color(color, 0.22)
+            segment_color = color if index < lit_count else shade_color(color, 0.22)
             pygame.draw.rect(self.canvas, segment_color,
                              (segment_x, y, segment_end - segment_x, height))
 
