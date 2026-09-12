@@ -140,7 +140,7 @@ class LcarsK8s(App):
         Binding("ctrl+r", "refresh_now", "Refresh", show=False),
     ]
 
-    def __init__(self, source, interval: float = 2.0, namespace: str = "",
+    def __init__(self, source, interval: float = 5.0, namespace: str = "",
                  view: str = "pods", sidebar: str = "left",
                  show_graphs: bool = True, network_status: tuple[int, ...] = (),
                  network_ingress: str = "", network_path: str = "") -> None:
@@ -486,13 +486,15 @@ class LcarsK8s(App):
                 colour = P.SUNFLOWER
             elif entry.status >= 300:
                 colour = P.LILAC
-            else:
+            elif entry.status >= 200:
                 colour = P.ANAKIWA
+            else:
+                colour = P.GREY
             table.add_row(
-                Text(entry.time, style=P.GREY),
+                Text(entry.time, style=colour),
                 Text(str(entry.status), style=Style(color=colour, bold=True)),
-                Text(entry.ingress, style=P.PERIWINKLE),
-                Text(entry.path, style=P.TAN),
+                Text(entry.ingress, style=colour),
+                Text(entry.path, style=colour),
                 key=str(index),
             )
         table.scroll_to(y=offset, animate=False)

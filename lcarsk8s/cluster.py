@@ -196,6 +196,7 @@ class NetworkLog:
     status: int
     ingress: str
     path: str
+    identity: str = ""
 
 
 @dataclass
@@ -299,6 +300,7 @@ class KubeSource:
         self.version_api = client.VersionApi()
         self._server_version = "-"
         self._metrics_warned = False
+        self._network_history: dict[str, NetworkLog] = {}
 
     # -- helpers ---------------------------------------------------------
     def _server(self) -> str:
@@ -460,15 +462,25 @@ class KubeSource:
                 entries.extend(parse_network_logs(raw))
             except Exception as exc:
                 failures.append(_brief(exc))
-        entries.sort(key=lambda entry: entry.time, reverse=True)
-        if entries:
+        history = self._network_history
+        for entry in entries:
+            key = entry.identity or "\0".join(
+                (entry.time, str(entry.status), entry.ingress, entry.path))
+            history[key] = entry
+        retained = sorted(history.values(), key=lambda entry: entry.time, reverse=True)[:500]
+        self._network_history = {
+            entry.identity or "\0".join(
+                (entry.time, str(entry.status), entry.ingress, entry.path)): entry
+            for entry in retained
+        }
+        if retained:
             message = f"{len(controllers)} ingress controller pod(s)"
             if failures:
                 message += f", {len(failures)} log read failed"
-            return entries, message
+            return retained, message
         if failures:
             return [], f"ingress logs unavailable ({failures[0]})"
-        return [], "No ingress requests in the last minute"
+        return [], "No ingress requests received yet"
 
     def describe_pod(self, namespace: str, name: str) -> dict:
         pod = self.core.read_namespaced_pod(name=name, namespace=namespace,
@@ -526,18 +538,23 @@ def parse_network_logs(raw: str | bytes) -> list[NetworkLog]:
                             or value.get("resource_name")
                             or value.get("proxy_upstream_name") or "-"),
                 path=str(path),
+                identity=str(value.get("id") or value.get("request_id")
+                             or value.get("req_id") or line),
             ))
             continue
         match = NGINX_ACCESS_RE.match(line)
         if not match:
             continue
         request = match.group("request").split()
-        upstream = NGINX_UPSTREAM_RE.search(match.group("rest"))
+        rest = match.group("rest")
+        upstream = NGINX_UPSTREAM_RE.search(rest)
+        parts = rest.rsplit(maxsplit=1)
         entries.append(NetworkLog(
             time=match.group("time"),
             status=int(match.group("status")),
             ingress=(upstream.group("upstream") if upstream else "-"),
             path=request[1] if len(request) > 1 else "-",
+            identity=parts[-1] if parts else line,
         ))
     return entries
 

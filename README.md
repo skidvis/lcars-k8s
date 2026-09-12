@@ -434,7 +434,7 @@ Do not set `COLORTERM=truecolor` for FbTerm.
 | `3` | open nodes |
 | `4` | open events |
 | `5` | open deployments |
-| `6` | open Ingress NGINX network logs from the last minute |
+| `6` | open the accumulated Ingress NGINX network log |
 | `Tab` | cycle through views |
 | `n` | select the next namespace |
 | `a` | show all namespaces |
@@ -470,7 +470,7 @@ lcars-k8s [options]
 | `--kubeconfig PATH` | use a specific kubeconfig file |
 | `--context NAME` | use a specific kubeconfig context |
 | `-n NAME`, `--namespace NAME` | start in one namespace |
-| `-i SECONDS`, `--interval SECONDS` | set the scan interval, default 2 seconds, minimum 0.5 |
+| `-i SECONDS`, `--interval SECONDS` | set the scan interval, default 5 seconds, minimum 0.5 |
 | `--view pods` or `--view 2` | start in the pods view |
 | `--view nodes` or `--view 3` | start in the nodes view |
 | `--view events` or `--view 4` | start in the events view |
@@ -499,12 +499,17 @@ Display modifiers such as `--windowed`, `--direct-kms`, and `--resolution` are
 intended to be used with `--graphics`.
 
 The network view discovers controller pods by the standard Ingress NGINX labels,
-with a controller-name fallback. It reads the default Ingress NGINX access-log
-format and JSON access logs from every discovered replica using a 60-second
-window. For default-format logs, the ingress column shows the upstream name.
-Press `/` or `f` to filter the visible time, status, ingress or upstream name,
-or path. If Ingress NGINX is absent or inaccessible, the view remains available
-and reports the condition in the status area.
+with a controller-name fallback. Each poll reads the previous 60 seconds from
+every discovered replica, parses default-format or JSON access logs, and merges
+new requests into a deduplicated session history. The newest 500 requests are
+retained. Graphical mode clears the visible table after each refresh, then
+reveals the newest rows sequentially. It displays only the rows that fit in the
+table; terminal mode allows scrolling through the retained history. Network
+rows use ice for 2xx, lavender for 3xx, gold for 4xx, red for 5xx, and grey for
+other status families. For default-format logs, the ingress column shows the
+upstream name. Press `/` or `f` to filter the visible time, status, ingress or
+upstream name, or path. If Ingress NGINX is absent or inaccessible, the view
+remains available and reports the condition in the status area.
 
 The verified JSON format uses `time`, `status`, `ingress`, and `path`:
 
@@ -545,9 +550,9 @@ kubectl get pods -A \
   -l app.kubernetes.io/name=ingress-nginx,app.kubernetes.io/component=controller
 ```
 
-Confirm log permission and inspect the same one-minute window used by the
-dashboard. Replace the namespace and pod name with values from the first
-command:
+Confirm log permission and inspect the same one-minute fetch window used by
+each dashboard poll. Replace the namespace and pod name with values from the
+first command:
 
 ```bash
 kubectl auth can-i get pods/log -n ingress
@@ -555,11 +560,12 @@ kubectl logs -n ingress ingress-nginx-controller-example \
   -c controller --since=1m
 ```
 
-The view only displays access requests from the last minute. Generate a request
-through an ingress and scan again if the log command is empty. Clear any active
-view filter with `Esc`. The status area distinguishes an undiscovered
-controller, a log permission or read failure, and a valid window containing no
-requests.
+Generate a request through an ingress and scan again if the log command is
+empty. Once received, a request remains in the session history until it falls
+outside the newest 500 retained entries or the application exits. Clear any
+active view filter with `Esc`. The status area distinguishes an undiscovered
+controller, a log permission or read failure, and a session that has not yet
+received requests.
 
 ### Missing metrics
 

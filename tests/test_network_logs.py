@@ -1,6 +1,7 @@
 import unittest
+from types import SimpleNamespace
 
-from lcarsk8s.cluster import parse_network_logs
+from lcarsk8s.cluster import KubeSource, parse_network_logs
 
 
 class ParseNetworkLogsTests(unittest.TestCase):
@@ -73,6 +74,42 @@ class ParseNetworkLogsTests(unittest.TestCase):
 
     def test_skips_unrecognized_lines(self):
         self.assertEqual(parse_network_logs("startup notice\nnot an access log"), [])
+
+
+class NetworkHistoryTests(unittest.TestCase):
+    def test_appends_deduplicates_and_retains_entries(self):
+        first = '{"time":"2026-09-12T04:03:35+00:00","path":"/a","status":200,"id":"a"}'
+        second = '\n'.join((
+            first,
+            '{"time":"2026-09-12T04:03:36+00:00","path":"/b","status":200,"id":"b"}',
+        ))
+
+        class Core:
+            responses = iter((first, second, ""))
+
+            def read_namespaced_pod_log(self, **kwargs):
+                return next(self.responses)
+
+        pod = SimpleNamespace(
+            metadata=SimpleNamespace(
+                name="ingress-nginx-controller-test",
+                namespace="ingress",
+                labels={},
+            ),
+            spec=SimpleNamespace(containers=[SimpleNamespace(name="controller")]),
+        )
+        source = KubeSource.__new__(KubeSource)
+        source.core = Core()
+        source.timeout = 10
+        source._network_history = {}
+
+        first_entries, _ = source.network_log_entries([pod])
+        second_entries, _ = source.network_log_entries([pod])
+        retained_entries, _ = source.network_log_entries([pod])
+
+        self.assertEqual([entry.identity for entry in first_entries], ["a"])
+        self.assertEqual([entry.identity for entry in second_entries], ["b", "a"])
+        self.assertEqual([entry.identity for entry in retained_entries], ["b", "a"])
 
 
 if __name__ == "__main__":

@@ -27,6 +27,7 @@ TOMATO = (221, 102, 68)
 WHITE = (245, 246, 250)
 GREY = (92, 92, 122)
 DIM = (45, 34, 54)
+ROW_REVEAL_INTERVAL = 0.04
 
 def shade_color(color: tuple[int, int, int], amount: float) -> tuple[int, int, int]:
     return tuple(int(channel * amount) for channel in color)
@@ -45,7 +46,7 @@ SORTS = (
 
 
 class LcarsGraphics:
-    def __init__(self, source, interval: float = 2.0, namespace: str = "",
+    def __init__(self, source, interval: float = 5.0, namespace: str = "",
                  view: str = "pods", windowed: bool = False,
                  resolution: tuple[int, int] | None = None,
                  sidebar: str = "left", show_graphs: bool = True,
@@ -100,6 +101,7 @@ class LcarsGraphics:
         self.clock = pygame.time.Clock()
         self.motion_started = time.monotonic()
         self.motion_time = 0.0
+        self.row_reveal_started = 0.0
         self.presented = False
         self._start_poll()
 
@@ -141,6 +143,7 @@ class LcarsGraphics:
             future, self.poll_future = self.poll_future, None
             try:
                 self.snapshot = future.result()
+                self.row_reveal_started = time.monotonic()
                 self.history_cpu = (self.history_cpu + [self.snapshot.cpu_fraction])[-240:]
                 self.history_mem = (self.history_mem + [self.snapshot.mem_fraction])[-240:]
                 self.status = (self.snapshot.network_message
@@ -383,17 +386,33 @@ class LcarsGraphics:
                           key=lambda deployment: (deployment.name.casefold(),
                                                   deployment.namespace.casefold()))
         if self.view == "network":
-            return [entry for entry in self.snapshot.network_logs
-                    if (not self.network_status or entry.status in self.network_status)
-                    and (not self.network_ingress or
-                         self.network_ingress in entry.ingress.lower())
-                    and (not self.network_path or self.network_path in entry.path.lower())
-                    and (not needle or needle in
-                         f"{entry.time} {entry.status} {entry.ingress} {entry.path}".lower())]
+            entries = [entry for entry in self.snapshot.network_logs
+                       if (not self.network_status or entry.status in self.network_status)
+                       and (not self.network_ingress or
+                            self.network_ingress in entry.ingress.lower())
+                       and (not self.network_path or self.network_path in entry.path.lower())
+                       and (not needle or needle in
+                            f"{entry.time} {entry.status} {entry.ingress} {entry.path}".lower())]
+            return entries[:self._table_capacity()]
         return [event for event in self.snapshot.events
                 if (not self.namespace or event.namespace == self.namespace)
                 and (not needle or needle in
                     f"{event.namespace} {event.name} {event.reason} {event.message}".lower())]
+
+    def _table_capacity(self) -> int:
+        table_y = 438 if self.show_graphs else 205
+        return max(1, (990 - (table_y + 92)) // 31)
+
+    def _network_status_color(self, status: int) -> tuple[int, int, int]:
+        if status >= 500:
+            return MARS
+        if status >= 400:
+            return GOLD
+        if status >= 300:
+            return LILAC
+        if status >= 200:
+            return ICE
+        return GREY
 
     def draw(self) -> None:
         self.motion_time = time.monotonic() - self.motion_started
@@ -604,16 +623,22 @@ class LcarsGraphics:
         for label, offset in columns:
             self._text(label, x + offset, header_y + 6, BLACK, "small")
         row_height = 31
-        available = max(1, (990 - (header_y + 42)) // row_height)
+        available = self._table_capacity()
         self.scroll = min(self.scroll, self.selected)
         if self.selected >= self.scroll + available:
             self.scroll = self.selected - available + 1
         visible = rows[self.scroll:self.scroll + available]
+        reveal_count = max(
+            0, int((time.monotonic() - self.row_reveal_started) / ROW_REVEAL_INTERVAL))
+        visible = visible[:reveal_count]
         for index, item in enumerate(visible):
             row_index = self.scroll + index
             ry = header_y + 40 + index * row_height
             if row_index == self.selected:
-                pygame.draw.rect(self.canvas, LILAC, (x, ry - 1, width, row_height))
+                selection_color = (self._network_status_color(item.status)
+                                   if self.view == "network" else LILAC)
+                pygame.draw.rect(self.canvas, selection_color,
+                                 (x, ry - 1, width, row_height))
             selected = row_index == self.selected
             self._table_row(item, x, ry, selected)
 
@@ -648,11 +673,11 @@ class LcarsGraphics:
                       (item.strategy, 1400, LILAC),
                       (humanize_age(item.created), 1510, GREY))
         elif self.view == "network":
-            status_color = (MARS if item.status >= 500 else
-                            GOLD if item.status >= 400 else
-                            LILAC if item.status >= 300 else ICE)
-            values = ((item.time, 18, GREY), (str(item.status), 390, status_color),
-                      (item.ingress, 520, PERIWINKLE), (item.path, 900, fg))
+            status_color = self._network_status_color(item.status)
+            values = ((item.time, 18, status_color),
+                      (str(item.status), 390, status_color),
+                      (item.ingress, 520, status_color),
+                      (item.path, 900, status_color))
         else:
             warning = item.type != "Normal"
             values = ((humanize_age(item.last), 18, GREY), (item.type, 120, MARS if warning else ICE),

@@ -21,8 +21,8 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--context", default=None, help="kubeconfig context to use")
     parser.add_argument("-n", "--namespace", default="",
                         help="start filtered to one namespace")
-    parser.add_argument("-i", "--interval", type=float, default=2.0,
-                        help="seconds between scans (default: 2)")
+    parser.add_argument("-i", "--interval", type=float, default=5.0,
+                        help="seconds between scans (default: 5)")
     parser.add_argument(
         "--view",
         choices=("pods", "nodes", "events", "deployments", "network",
