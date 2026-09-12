@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import math
 import os
+import random
 import time
 from concurrent.futures import Future, ThreadPoolExecutor
 from pathlib import Path
@@ -28,6 +29,8 @@ WHITE = (245, 246, 250)
 GREY = (92, 92, 122)
 DIM = (45, 34, 54)
 NETWORK_REVEAL_DURATION = 5.0
+NETWORK_REPLAY_MIN = 30.0
+NETWORK_REPLAY_MAX = 120.0
 
 def shade_color(color: tuple[int, int, int], amount: float) -> tuple[int, int, int]:
     return tuple(int(channel * amount) for channel in color)
@@ -103,6 +106,9 @@ class LcarsGraphics:
         self.motion_time = 0.0
         self.network_reveal_started = 0.0
         self.network_reveal_ids: set[str] = set()
+        self.network_replay_started: float | None = None
+        self.next_network_replay = (
+            time.monotonic() + random.uniform(NETWORK_REPLAY_MIN, NETWORK_REPLAY_MAX))
         self.presented = False
         self._start_poll()
 
@@ -427,6 +433,20 @@ class LcarsGraphics:
         table_y = 438 if self.show_graphs else 205
         return max(1, (990 - (table_y + 92)) // 31)
 
+    def _network_replay_count(self, total: int) -> int:
+        now = time.monotonic()
+        if now >= self.next_network_replay:
+            self.network_replay_started = now
+            self.next_network_replay = (
+                now + random.uniform(NETWORK_REPLAY_MIN, NETWORK_REPLAY_MAX))
+        if self.network_replay_started is None:
+            return total
+        progress = min(1.0, (now - self.network_replay_started) / NETWORK_REVEAL_DURATION)
+        if progress >= 1.0:
+            self.network_replay_started = None
+            return total
+        return int(total * progress)
+
     def _network_status_color(self, status: int) -> tuple[int, int, int]:
         if status >= 500:
             return MARS
@@ -482,7 +502,7 @@ class LcarsGraphics:
         self._text(context.upper(), main_start, 92, TAN, "label")
         self._text(version.upper(), main_end, 92, ICE, "label", "right")
         self._text(f"STARDATE {stardate()}", main_end, 127, LILAC, "small", "right")
-        self._scanner_rail(main_start, 76, 1531, 10, ORANGE, 0.0)
+        self._signal_rail(main_start, 76, 1531, 10, ORANGE)
         nav = (("02", "PODS", ORANGE), ("03", "NODES", LILAC),
                ("04", "EVENTS", TAN), ("05", "DEPLOYMENTS", PERIWINKLE),
                ("06", "NETWORK", ICE))
@@ -652,6 +672,8 @@ class LcarsGraphics:
         if self.selected >= self.scroll + available:
             self.scroll = self.selected - available + 1
         visible = rows[self.scroll:self.scroll + available]
+        if self.view == "network":
+            visible = visible[:self._network_replay_count(len(visible))]
         for index, item in enumerate(visible):
             row_index = self.scroll + index
             ry = header_y + 40 + index * row_height
@@ -728,7 +750,7 @@ class LcarsGraphics:
 
     def _footer(self) -> None:
         right = self.sidebar_side == "right"
-        self._scanner_rail(self._main_x(340), 998, 1556, 9, LILAC, 0.55)
+        self._signal_rail(self._main_x(340), 998, 1556, 9, LILAC)
         footer_x = 1636 if right else 24
         pygame.draw.rect(self.canvas, LILAC, (footer_x, 1012, 260, 44))
         pygame.draw.rect(self.canvas, self.status_color, (24, 1036, 1872, 28), border_radius=14)
@@ -743,19 +765,17 @@ class LcarsGraphics:
             pygame.draw.circle(self.canvas, color, (light_x, 1050), 4)
         self._text(self.status, self._main_x(1870), 1041, BLACK, "small", "right")
 
-    def _scanner_rail(self, x: int, y: int, width: int, height: int,
-                      color: tuple[int, int, int], offset: float) -> None:
-        pygame.draw.rect(self.canvas, shade_color(color, 0.22), (x, y, width, height))
-        segment = 190
-        travel = width + segment
-        head = x + int(((self.motion_time * 0.2278 + offset) % 1.0) * travel) - segment
-        start = max(x, head)
-        end = min(x + width, head + segment)
-        if end > start:
-            pygame.draw.rect(self.canvas, color, (start, y, end - start, height))
+    def _signal_rail(self, x: int, y: int, width: int, height: int,
+                     color: tuple[int, int, int]) -> None:
         gap = 11
-        pygame.draw.rect(self.canvas, BLACK, (x + width // 3, y, gap, height))
-        pygame.draw.rect(self.canvas, BLACK, (x + width * 2 // 3, y, gap, height))
+        segment_width = (width - gap * 2) // 3
+        active = int(self.motion_time / 0.75) % 3
+        for index in range(3):
+            segment_x = x + index * (segment_width + gap)
+            segment_end = x + width if index == 2 else segment_x + segment_width
+            segment_color = color if index == active else shade_color(color, 0.22)
+            pygame.draw.rect(self.canvas, segment_color,
+                             (segment_x, y, segment_end - segment_x, height))
 
     def _filter_overlay(self) -> None:
         pygame.draw.rect(self.canvas, BLACK, (520, 948, 1120, 58), border_radius=29)
