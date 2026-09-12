@@ -27,7 +27,7 @@ TOMATO = (221, 102, 68)
 WHITE = (245, 246, 250)
 GREY = (92, 92, 122)
 DIM = (45, 34, 54)
-ROW_REVEAL_DURATION = 5.0
+NETWORK_REVEAL_DURATION = 5.0
 
 def shade_color(color: tuple[int, int, int], amount: float) -> tuple[int, int, int]:
     return tuple(int(channel * amount) for channel in color)
@@ -101,7 +101,8 @@ class LcarsGraphics:
         self.clock = pygame.time.Clock()
         self.motion_started = time.monotonic()
         self.motion_time = 0.0
-        self.row_reveal_started = 0.0
+        self.network_reveal_started = 0.0
+        self.network_reveal_ids: set[str] = set()
         self.presented = False
         self._start_poll()
 
@@ -142,8 +143,17 @@ class LcarsGraphics:
         if self.poll_future is not None and self.poll_future.done():
             future, self.poll_future = self.poll_future, None
             try:
+                previous = self.snapshot
                 self.snapshot = future.result()
-                self.row_reveal_started = time.monotonic()
+                if self.view == "network":
+                    previous_ids = ({self._network_key(entry)
+                                     for entry in previous.network_logs}
+                                    if previous else set())
+                    self.network_reveal_ids = {
+                        self._network_key(entry) for entry in self.snapshot.network_logs
+                        if self._network_key(entry) not in previous_ids
+                    }
+                    self.network_reveal_started = time.monotonic()
                 self.history_cpu = (self.history_cpu + [self.snapshot.cpu_fraction])[-240:]
                 self.history_mem = (self.history_mem + [self.snapshot.mem_fraction])[-240:]
                 self.status = (self.snapshot.network_message
@@ -386,18 +396,32 @@ class LcarsGraphics:
                           key=lambda deployment: (deployment.name.casefold(),
                                                   deployment.namespace.casefold()))
         if self.view == "network":
-            entries = [entry for entry in self.snapshot.network_logs
+            entries = [entry for entry in reversed(self.snapshot.network_logs)
                        if (not self.network_status or entry.status in self.network_status)
                        and (not self.network_ingress or
                             self.network_ingress in entry.ingress.lower())
                        and (not self.network_path or self.network_path in entry.path.lower())
                        and (not needle or needle in
                             f"{entry.time} {entry.status} {entry.ingress} {entry.path}".lower())]
-            return entries[:self._table_capacity()]
+            pending = [entry for entry in entries
+                       if self._network_key(entry) in self.network_reveal_ids]
+            progress = min(
+                1.0, max(0.0, (time.monotonic() - self.network_reveal_started)
+                         / NETWORK_REVEAL_DURATION))
+            revealed = {self._network_key(entry)
+                        for entry in pending[:int(len(pending) * progress)]}
+            entries = [entry for entry in entries
+                       if self._network_key(entry) not in self.network_reveal_ids
+                       or self._network_key(entry) in revealed]
+            return entries[-self._table_capacity():]
         return [event for event in self.snapshot.events
                 if (not self.namespace or event.namespace == self.namespace)
                 and (not needle or needle in
                     f"{event.namespace} {event.name} {event.reason} {event.message}".lower())]
+
+    def _network_key(self, entry) -> str:
+        return entry.identity or "\0".join(
+            (entry.time, str(entry.status), entry.ingress, entry.path))
 
     def _table_capacity(self) -> int:
         table_y = 438 if self.show_graphs else 205
@@ -628,10 +652,6 @@ class LcarsGraphics:
         if self.selected >= self.scroll + available:
             self.scroll = self.selected - available + 1
         visible = rows[self.scroll:self.scroll + available]
-        reveal_progress = min(
-            1.0, max(0.0, (time.monotonic() - self.row_reveal_started)
-                     / ROW_REVEAL_DURATION))
-        visible = visible[:int(len(visible) * reveal_progress)]
         for index, item in enumerate(visible):
             row_index = self.scroll + index
             ry = header_y + 40 + index * row_height

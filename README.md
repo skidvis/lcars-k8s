@@ -502,10 +502,12 @@ The network view discovers controller pods by the standard Ingress NGINX labels,
 with a controller-name fallback. Each poll reads the previous 60 seconds from
 every discovered replica, parses default-format or JSON access logs, and merges
 new requests into a deduplicated session history. The newest 500 requests are
-retained. Graphical mode clears the visible table after each refresh, then
-reveals the newest rows sequentially across the five-second polling cycle. It
-displays only the rows that fit in the table; terminal mode allows scrolling
-through the retained history. Graphical network row backgrounds use periwinkle
+retained. Graphical mode preserves existing rows between refreshes and reveals
+only newly received requests across the five-second polling cycle. Requests are
+shown in chronological order with new entries added at the bottom. Once the
+table is full, each new entry removes the oldest row from the top to create a
+scrolling log. Terminal mode allows scrolling through the retained history.
+Graphical network row backgrounds use periwinkle
 for 2xx, lavender for 3xx, gold for 4xx, red for 5xx, and grey for other status
 families, keeping them distinct from the ice table header. Row text is black,
 and the selected row has a white outline. For default-format logs, the ingress
