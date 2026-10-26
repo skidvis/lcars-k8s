@@ -10,6 +10,11 @@ class CliTests(unittest.TestCase):
     def test_interval_can_be_overridden(self):
         self.assertEqual(build_parser().parse_args(["--interval", "2"]).interval, 2.0)
 
+    def test_network_exclude_repeats(self):
+        args = build_parser().parse_args(["--network-exclude", "/healthz",
+                                          "--network-exclude", "grafana"])
+        self.assertEqual(args.network_exclude, ["/healthz", "grafana"])
+
 
 if __name__ == "__main__":
     unittest.main()

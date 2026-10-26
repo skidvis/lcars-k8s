@@ -36,6 +36,9 @@ def build_parser() -> argparse.ArgumentParser:
                         help="include ingress names containing this text")
     parser.add_argument("--network-path", default="",
                         help="include request paths containing this text")
+    parser.add_argument("--network-exclude", action="append", default=[], metavar="TEXT",
+                        help="hide network logs whose ingress or path contains this "
+                             "text; repeat for more")
     display = parser.add_argument_group("display")
     renderer = display.add_mutually_exclusive_group()
     renderer.add_argument(
@@ -158,7 +161,8 @@ def main(argv: list[str] | None = None) -> int:
                 sidebar=args.sidebar, show_graphs=not args.no_graphs,
                 network_status=tuple(args.network_status),
                 network_ingress=args.network_ingress,
-                network_path=args.network_path).run()
+                network_path=args.network_path,
+                network_exclude=tuple(args.network_exclude)).run()
         except Exception as error:
             print(f"lcars-k8s: graphical display failed: {error}", file=sys.stderr)
             print("Switch away from Kmscon before direct KMS/DRM mode, or use "
@@ -172,7 +176,8 @@ def main(argv: list[str] | None = None) -> int:
                    sidebar=args.sidebar, show_graphs=not args.no_graphs,
                    network_status=tuple(args.network_status),
                    network_ingress=args.network_ingress,
-                   network_path=args.network_path)
+                   network_path=args.network_path,
+                   network_exclude=tuple(args.network_exclude))
     app.run()
     return 0
 

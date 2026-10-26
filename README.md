@@ -227,6 +227,7 @@ lcars-k8s --timeout 20
 lcars-k8s --view nodes
 lcars-k8s --view network
 lcars-k8s --view network --network-status 404 --network-path /api/
+lcars-k8s --view network --network-exclude /healthz --network-exclude metrics
 ```
 
 The terminal layout adapts down to 80 columns by 24 rows. A terminal with at
@@ -483,6 +484,7 @@ lcars-k8s [options]
 | `--network-status STATUS` | include one HTTP status; repeat to include several |
 | `--network-ingress TEXT` | include ingress names containing the text |
 | `--network-path TEXT` | include request paths containing the text |
+| `--network-exclude TEXT` | hide rows whose ingress or path contains the text; repeat for more |
 | `--timeout SECONDS` | set the API request timeout, default 10 seconds |
 | `--graphics` | use the pixel-rendered SDL interface |
 | `--windowed` | use a resizable desktop window with graphical mode |
@@ -518,7 +520,10 @@ for 2xx, lavender for 3xx, gold for 4xx, red for 5xx, and grey for other status
 families, keeping them distinct from the ice table header. Row text is black,
 and the selected row has a white outline. For default-format logs, the ingress
 column shows the upstream name. Press `/` or `f` to filter the visible time, status, ingress or
-upstream name, or path. If Ingress NGINX is absent or inaccessible, the view
+upstream name, or path. To hide noisy traffic such as health checks or
+services that poll every few seconds, start with `--network-exclude TEXT`; any
+request whose ingress or path contains the text is dropped from the table, and
+the table bar lists the active excludes. If Ingress NGINX is absent or inaccessible, the view
 remains available and reports the condition in the status area.
 
 The verified JSON format uses `time`, `status`, `ingress`, and `path`:

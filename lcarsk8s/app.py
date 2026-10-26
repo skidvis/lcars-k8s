@@ -143,7 +143,8 @@ class LcarsK8s(App):
     def __init__(self, source, interval: float = 5.0, namespace: str = "",
                  view: str = "pods", sidebar: str = "left",
                  show_graphs: bool = True, network_status: tuple[int, ...] = (),
-                 network_ingress: str = "", network_path: str = "") -> None:
+                 network_ingress: str = "", network_path: str = "",
+                 network_exclude: tuple[str, ...] = ()) -> None:
         super().__init__()
         self.source = source
         self.interval = interval
@@ -154,6 +155,7 @@ class LcarsK8s(App):
         self.network_status = network_status
         self.network_ingress = network_ingress.lower()
         self.network_path = network_path.lower()
+        self.network_exclude = tuple(text.lower() for text in network_exclude if text)
         self.snapshot: Snapshot | None = None
         self.filter_text = ""
         self.sort_index = 5
@@ -476,6 +478,8 @@ class LcarsK8s(App):
                    and (not self.network_ingress or
                         self.network_ingress in entry.ingress.lower())
                    and (not self.network_path or self.network_path in entry.path.lower())
+                   and not any(text in entry.ingress.lower() or text in entry.path.lower()
+                               for text in self.network_exclude)
                    and self._matches(str(entry.status), entry.ingress, entry.path,
                                      entry.time)]
         table.clear()
@@ -571,6 +575,9 @@ class LcarsK8s(App):
         if self.view == "network" and self.network_path:
             value.append("  PATH ", style=P.GREY)
             value.append(self.network_path, style=P.TAN)
+        if self.view == "network" and self.network_exclude:
+            value.append("  EXCLUDE ", style=P.GREY)
+            value.append(",".join(self.network_exclude), style=P.MARS)
         if self.filter_text:
             value.append("  FILTER ", style=P.GREY)
             value.append(self.filter_text, style=P.SUNFLOWER)

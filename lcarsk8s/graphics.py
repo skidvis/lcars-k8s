@@ -54,7 +54,8 @@ class LcarsGraphics:
                  resolution: tuple[int, int] | None = None,
                  sidebar: str = "left", show_graphs: bool = True,
                  network_status: tuple[int, ...] = (), network_ingress: str = "",
-                 network_path: str = "") -> None:
+                 network_path: str = "",
+                 network_exclude: tuple[str, ...] = ()) -> None:
         pygame.display.init()
         pygame.font.init()
         flags = pygame.RESIZABLE if windowed else pygame.FULLSCREEN
@@ -83,6 +84,7 @@ class LcarsGraphics:
         self.network_status = network_status
         self.network_ingress = network_ingress.lower()
         self.network_path = network_path.lower()
+        self.network_exclude = tuple(text.lower() for text in network_exclude if text)
         self.filter_text = ""
         self.filtering = False
         self.sort_index = 5
@@ -421,6 +423,8 @@ class LcarsGraphics:
                        and (not self.network_ingress or
                             self.network_ingress in entry.ingress.lower())
                        and (not self.network_path or self.network_path in entry.path.lower())
+                       and not any(text in entry.ingress.lower() or text in entry.path.lower()
+                                   for text in self.network_exclude)
                        and (not needle or needle in
                             f"{entry.time} {entry.status} {entry.ingress} {entry.path}".lower())]
             pending = [entry for entry in entries
@@ -654,6 +658,8 @@ class LcarsGraphics:
             right += f"   INGRESS {self.network_ingress}"
         if self.view == "network" and self.network_path:
             right += f"   PATH {self.network_path}"
+        if self.view == "network" and self.network_exclude:
+            right += "   EXCLUDE " + ",".join(self.network_exclude)
         if self.view == "pods":
             right += f"   SORT {SORTS[self.sort_index][1]}{'▼' if self.sort_reverse else '▲'}"
         self._text(right, x + width - 22, y + 10, BLACK, "small", "right")
