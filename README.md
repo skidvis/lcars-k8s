@@ -523,7 +523,11 @@ column shows the upstream name. Press `/` or `f` to filter the visible time, sta
 upstream name, or path. To hide noisy traffic such as health checks or
 services that poll every few seconds, start with `--network-exclude TEXT`; any
 request whose ingress or path contains the text is dropped from the table, and
-the table bar lists the active excludes. If Ingress NGINX is absent or inaccessible, the view
+the table bar lists the active excludes. A 24H HITS panel beside the log
+totals requests per ingress over the last 24 hours, busiest first, leaving out
+anything matched by `--network-exclude`. It re-reads 24 hours of controller
+logs every five minutes, so counts can lag by up to five minutes and cannot
+reach further back than the kubelet has kept the controller's logs. If Ingress NGINX is absent or inaccessible, the view
 remains available and reports the condition in the status area.
 
 The verified JSON format uses `time`, `status`, `ingress`, and `path`:

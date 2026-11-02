@@ -17,7 +17,7 @@ from textual.widgets import DataTable, Input, RichLog, Static
 from . import glyphs as G
 from . import palette as P
 from .cluster import (ClusterError, Snapshot, humanize_age, humanize_bytes,
-                      humanize_cpu)
+                      humanize_cpu, ingress_hit_counts)
 from .screens import DetailScreen, HelpScreen, LogScreen
 from .widgets import (ARM, LcarsFooter, LcarsHeader, LcarsSidebar, LoadPanel,
                       StatStrip, node_meter_rows)
@@ -91,6 +91,7 @@ class LcarsK8s(App):
         scrollbar-size-vertical: 1;
     }
     DataTable.hidden { display: none; }
+    #hits { dock: right; width: 34; margin-left: 1; }
     DataTable > .datatable--header {
         background: $lcars-orange; color: black; text-style: bold;
     }
@@ -189,6 +190,8 @@ class LcarsK8s(App):
                 yield StatStrip(id="stats")
                 yield Static(id="table-bar")
                 with Vertical(id="table-host"):
+                    yield DataTable(id="hits", classes="hidden", zebra_stripes=False,
+                                    cursor_type="none", header_height=1)
                     yield DataTable(id="pods", zebra_stripes=False,
                                     cursor_type="row", header_height=1)
                     yield DataTable(id="nodes", classes="hidden", zebra_stripes=False,
@@ -260,6 +263,10 @@ class LcarsK8s(App):
             ("INGRESS", "ingress", 32), ("PATH", "path", 70),
         ):
             network.add_column(Text(label), key=key, width=width)
+
+        hits = self.query_one("#hits", DataTable)
+        hits.add_column(Text("INGRESS"), key="ingress", width=22)
+        hits.add_column(Text("24H", justify="right"), key="count", width=7)
 
     # -- polling ---------------------------------------------------------
     def _schedule(self) -> None:
@@ -503,6 +510,13 @@ class LcarsK8s(App):
             )
         table.scroll_to(y=offset, animate=False)
 
+        hits = self.query_one("#hits", DataTable)
+        hits.clear()
+        for ingress, count in ingress_hit_counts(self.snapshot.network_hits,
+                                                 self.network_exclude):
+            hits.add_row(Text(ingress, style=P.ANAKIWA),
+                         Text(f"{count:,}", style=P.TAN, justify="right"))
+
     def _fill_events(self) -> None:
         if not self.snapshot or not self.snapshot.events:
             return
@@ -614,6 +628,7 @@ class LcarsK8s(App):
     def _apply_view(self) -> None:
         for name in ("pods", "nodes", "events", "deployments", "network"):
             self.query_one(f"#{name}", DataTable).set_class(name != self.view, "hidden")
+        self.query_one("#hits", DataTable).set_class(self.view != "network", "hidden")
         self.query_one(LcarsSidebar).view = self.view
         table = self.query_one(f"#{self.view}", DataTable)
         table.focus()

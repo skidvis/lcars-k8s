@@ -1,7 +1,7 @@
 import unittest
 from types import SimpleNamespace
 
-from lcarsk8s.cluster import KubeSource, parse_network_logs
+from lcarsk8s.cluster import KubeSource, ingress_hit_counts, parse_network_logs
 
 
 class ParseNetworkLogsTests(unittest.TestCase):
@@ -110,6 +110,15 @@ class NetworkHistoryTests(unittest.TestCase):
         self.assertEqual([entry.identity for entry in first_entries], ["a"])
         self.assertEqual([entry.identity for entry in second_entries], ["b", "a"])
         self.assertEqual([entry.identity for entry in retained_entries], ["b", "a"])
+
+
+class IngressHitCountTests(unittest.TestCase):
+    def test_totals_per_ingress_without_excluded_requests(self):
+        hits = {("default-x-com-80", "/"): 200, ("default-x-com-80", "/healthz"): 900,
+                ("default-y-com-80", "/api"): 34, ("monitoring-grafana-80", "/"): 50}
+        self.assertEqual(ingress_hit_counts(hits, ("/healthz", "grafana")),
+                         [("default-x-com-80", 200), ("default-y-com-80", 34)])
+        self.assertEqual(ingress_hit_counts(hits)[0], ("default-x-com-80", 1100))
 
 
 if __name__ == "__main__":

@@ -14,6 +14,7 @@ import math
 import random
 import re
 import time
+from collections import Counter
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 
@@ -211,6 +212,8 @@ class Snapshot:
     events: list[Event] = field(default_factory=list)
     network_logs: list[NetworkLog] = field(default_factory=list)
     network_message: str = ""
+    # (ingress, path) -> requests in the last 24 hours
+    network_hits: dict[tuple[str, str], int] = field(default_factory=dict)
     metrics_available: bool = False
     errors: list[str] = field(default_factory=list)
 
@@ -301,6 +304,8 @@ class KubeSource:
         self._server_version = "-"
         self._metrics_warned = False
         self._network_history: dict[str, NetworkLog] = {}
+        self._network_hits: dict[tuple[str, str], int] = {}
+        self._network_hits_at = 0.0
 
     # -- helpers ---------------------------------------------------------
     def _server(self) -> str:
@@ -422,6 +427,7 @@ class KubeSource:
 
         if want_network:
             snap.network_logs, snap.network_message = self.network_log_entries(pod_list)
+            snap.network_hits = self.network_hits(pod_list)
 
         snap.errors = errors
         return snap
@@ -482,10 +488,48 @@ class KubeSource:
             return [], f"ingress logs unavailable ({failures[0]})"
         return [], "No ingress requests received yet"
 
+    def network_hits(self, pod_list) -> dict[tuple[str, str], int]:
+        # ponytail: re-reads 24h of controller logs every 5 minutes; counts lag by up
+        # to 5 minutes and stop at the kubelet's log rotation. Keep a rolling
+        # in-memory window if either matters.
+        if time.time() - self._network_hits_at < NETWORK_HITS_REFRESH:
+            return self._network_hits
+        hits: Counter = Counter()
+        try:
+            for pod in pod_list or []:
+                if not _is_ingress_controller(pod):
+                    continue
+                containers = getattr(getattr(pod, "spec", None), "containers", []) or []
+                names = [container.name for container in containers]
+                container = ("controller" if "controller" in names else
+                             names[0] if len(names) > 1 else None)
+                raw = self.core.read_namespaced_pod_log(
+                    name=pod.metadata.name, namespace=pod.metadata.namespace,
+                    container=container, since_seconds=86400, timestamps=False,
+                    _request_timeout=self.timeout)
+                hits.update((entry.ingress, entry.path) for entry in parse_network_logs(raw))
+        except Exception:
+            return self._network_hits  # keep the last good counts, retry next poll
+        self._network_hits, self._network_hits_at = dict(hits), time.time()
+        return self._network_hits
+
     def describe_pod(self, namespace: str, name: str) -> dict:
         pod = self.core.read_namespaced_pod(name=name, namespace=namespace,
                                             _request_timeout=self.timeout)
         return self._client.ApiClient().sanitize_for_serialization(pod)
+
+
+NETWORK_HITS_REFRESH = 300.0
+
+
+def ingress_hit_counts(hits: dict[tuple[str, str], int],
+                       exclude: tuple[str, ...] = ()) -> list[tuple[str, int]]:
+    """Total 24h hits per ingress, busiest first, minus excluded ingresses/paths."""
+    totals: Counter = Counter()
+    for (ingress, path), count in hits.items():
+        if not any(text in ingress.lower() or text in path.lower() for text in exclude):
+            totals[ingress] += count
+    return sorted(totals.items(), key=lambda item: (-item[1], item[0]))
 
 
 def _is_ingress_controller(raw) -> bool:
@@ -866,6 +910,10 @@ class DemoSource:
                     path=paths[index % len(paths)],
                 ))
             snap.network_message = "1 ingress controller pod (demo)"
+            snap.network_hits = {("web-ingress", "/"): 1840 + self.tick,
+                                 ("web-ingress", "/healthz"): 17280,
+                                 ("api-ingress", "/api/orders"): 612 + self.tick // 2,
+                                 ("api-ingress", "/login"): 94}
         return snap
 
     def pod_logs(self, namespace: str, name: str, container: str | None = None,

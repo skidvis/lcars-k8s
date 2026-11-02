@@ -10,7 +10,8 @@ from pathlib import Path
 
 import pygame
 
-from .cluster import Snapshot, humanize_age, humanize_bytes, humanize_cpu, stardate
+from .cluster import (Snapshot, humanize_age, humanize_bytes, humanize_cpu,
+                      ingress_hit_counts, stardate)
 
 W, H = 1920, 1080
 BLACK = (0, 0, 0)
@@ -31,6 +32,7 @@ DIM = (45, 34, 54)
 NETWORK_REVEAL_DURATION = 5.0
 NETWORK_REPLAY_MIN = 30.0
 NETWORK_REPLAY_MAX = 120.0
+NETWORK_HITS_WIDTH = 360
 
 def shade_color(color: tuple[int, int, int], amount: float) -> tuple[int, int, int]:
     return tuple(int(channel * amount) for channel in color)
@@ -643,6 +645,9 @@ class LcarsGraphics:
 
     def _table(self, y: int) -> None:
         x, width = self._main_x(340), 1556
+        if self.view == "network":
+            width -= NETWORK_HITS_WIDTH + 24
+            self._hits_panel(x + width + 24, y, NETWORK_HITS_WIDTH)
         rows = self._rows()
         title = self.view.upper()
         color = {"pods": ORANGE, "nodes": LILAC, "events": TAN,
@@ -708,9 +713,29 @@ class LcarsGraphics:
                                      (x, ry - 1, width, row_height - 2), width=2)
             elif selected:
                 pygame.draw.rect(self.canvas, LILAC, (x, ry - 1, width, row_height))
-            self._table_row(item, x, ry, selected)
+            self._table_row(item, x, ry, selected, width)
 
-    def _table_row(self, item, x: int, y: int, selected: bool) -> None:
+    def _hits_panel(self, x: int, y: int, width: int) -> None:
+        hits = ingress_hit_counts(self.snapshot.network_hits if self.snapshot else {},
+                                  self.network_exclude)
+        pygame.draw.rect(self.canvas, ICE, (x, y, width, 42), border_radius=21)
+        self._text("24H HITS", x + 22, y + 8, BLACK, "label")
+        self._text(f"{sum(count for _, count in hits):,}", x + width - 22, y + 10,
+                   BLACK, "small", "right")
+        header_y = y + 50
+        pygame.draw.rect(self.canvas, ICE, (x, header_y, width, 34))
+        self._text("INGRESS", x + 18, header_y + 6, BLACK, "small")
+        self._text("HITS", x + width - 18, header_y + 6, BLACK, "small", "right")
+        for index, (ingress, count) in enumerate(hits[:self._table_capacity()]):
+            ry = header_y + 40 + index * 31
+            label = f"{count:,}"
+            label_width = self.fonts["small"].size(label)[0]
+            self._text_clip(ingress, x + 18, ry + 3, TAN, "small",
+                            width - label_width - 54)
+            self._text(label, x + width - 18, ry + 3, ICE, "small", "right")
+
+    def _table_row(self, item, x: int, y: int, selected: bool,
+                   table_width: int = 1556) -> None:
         fg = BLACK if selected else TAN
         if self.view == "pods":
             capacity = {node.name: node for node in self.snapshot.nodes} if self.snapshot else {}
@@ -752,7 +777,7 @@ class LcarsGraphics:
                       (f"{item.kind}/{item.name}", 700, TAN), (str(item.count), 1040, LILAC),
                       (item.message, 1110, GREY))
         for index, (value, offset, color) in enumerate(values):
-            next_offset = values[index + 1][1] if index + 1 < len(values) else 1556
+            next_offset = values[index + 1][1] if index + 1 < len(values) else table_width
             width = max(30, next_offset - offset - 18)
             self._text_clip(str(value), x + offset, y + 3,
                             color if not selected else BLACK, "small", width)
