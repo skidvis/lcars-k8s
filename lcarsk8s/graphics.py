@@ -728,6 +728,8 @@ class LcarsGraphics:
         self._text("HITS", x + width - 18, header_y + 6, BLACK, "small", "right")
         for index, (ingress, count) in enumerate(hits[:self._table_capacity()]):
             ry = header_y + 40 + index * 31
+            if index % 2:
+                pygame.draw.rect(self.canvas, DIM, (x, ry - 1, width, 29))
             label = f"{count:,}"
             label_width = self.fonts["small"].size(label)[0]
             self._text_clip(ingress, x + 18, ry + 3, TAN, "small",

@@ -92,6 +92,8 @@ class LcarsK8s(App):
     }
     DataTable.hidden { display: none; }
     #hits { dock: right; width: 34; margin-left: 1; }
+    #hits > .datatable--even-row { background: $lcars-black; }
+    #hits > .datatable--odd-row { background: $lcars-dim; }
     DataTable > .datatable--header {
         background: $lcars-orange; color: black; text-style: bold;
     }
@@ -190,7 +192,7 @@ class LcarsK8s(App):
                 yield StatStrip(id="stats")
                 yield Static(id="table-bar")
                 with Vertical(id="table-host"):
-                    yield DataTable(id="hits", classes="hidden", zebra_stripes=False,
+                    yield DataTable(id="hits", classes="hidden", zebra_stripes=True,
                                     cursor_type="none", header_height=1)
                     yield DataTable(id="pods", zebra_stripes=False,
                                     cursor_type="row", header_height=1)
