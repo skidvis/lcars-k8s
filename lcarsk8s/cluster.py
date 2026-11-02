@@ -489,8 +489,8 @@ class KubeSource:
         return [], "No ingress requests received yet"
 
     def network_hits(self, pod_list) -> dict[tuple[str, str], int]:
-        # ponytail: re-reads 24h of controller logs every 5 minutes; counts lag by up
-        # to 5 minutes and stop at the kubelet's log rotation. Keep a rolling
+        # ponytail: re-reads 24h of controller logs every minute; counts lag by up
+        # to a minute and stop at the kubelet's log rotation. Keep a rolling
         # in-memory window if either matters.
         if time.time() - self._network_hits_at < NETWORK_HITS_REFRESH:
             return self._network_hits
@@ -519,7 +519,7 @@ class KubeSource:
         return self._client.ApiClient().sanitize_for_serialization(pod)
 
 
-NETWORK_HITS_REFRESH = 300.0
+NETWORK_HITS_REFRESH = 60.0
 
 
 def ingress_hit_counts(hits: dict[tuple[str, str], int],
