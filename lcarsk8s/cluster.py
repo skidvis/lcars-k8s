@@ -11,12 +11,14 @@ from __future__ import annotations
 import ast
 import json
 import math
+import os
 import random
 import re
 import time
 from collections import Counter
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
+from pathlib import Path
 
 CPU_SUFFIX = {
     "n": 1e-9, "u": 1e-6, "m": 1e-3, "": 1.0,
@@ -304,8 +306,9 @@ class KubeSource:
         self._server_version = "-"
         self._metrics_warned = False
         self._network_history: dict[str, NetworkLog] = {}
-        self._network_hits: dict[tuple[str, str], int] = {}
-        self._network_hits_at = 0.0
+        self._hits = HitCounter(Path.home() / ".cache" / "lcars-k8s" / (
+            "hits-" + re.sub(r"[^A-Za-z0-9_.-]", "_", self.context) + ".json"))
+        self._hits_read_at = 0.0
 
     # -- helpers ---------------------------------------------------------
     def _server(self) -> str:
@@ -427,7 +430,8 @@ class KubeSource:
 
         if want_network:
             snap.network_logs, snap.network_message = self.network_log_entries(pod_list)
-            snap.network_hits = self.network_hits(pod_list)
+        # Counted on every view so the 24h totals don't miss traffic.
+        snap.network_hits = self.network_hits(pod_list)
 
         snap.errors = errors
         return snap
@@ -457,13 +461,9 @@ class KubeSource:
         failures: list[str] = []
         for pod in controllers:
             try:
-                containers = getattr(getattr(pod, "spec", None), "containers", []) or []
-                names = [container.name for container in containers]
-                container = ("controller" if "controller" in names else
-                             names[0] if len(names) > 1 else None)
                 raw = self.core.read_namespaced_pod_log(
                     name=pod.metadata.name, namespace=pod.metadata.namespace,
-                    container=container, since_seconds=60, timestamps=False,
+                    container=_controller_container(pod), since_seconds=60, timestamps=False,
                     _request_timeout=self.timeout)
                 entries.extend(parse_network_logs(raw))
             except Exception as exc:
@@ -489,29 +489,22 @@ class KubeSource:
         return [], "No ingress requests received yet"
 
     def network_hits(self, pod_list) -> dict[tuple[str, str], int]:
-        # ponytail: re-reads 24h of controller logs every minute; counts lag by up
-        # to a minute and stop at the kubelet's log rotation. Keep a rolling
-        # in-memory window if either matters.
-        if time.time() - self._network_hits_at < NETWORK_HITS_REFRESH:
-            return self._network_hits
-        hits: Counter = Counter()
-        try:
-            for pod in pod_list or []:
-                if not _is_ingress_controller(pod):
-                    continue
-                containers = getattr(getattr(pod, "spec", None), "containers", []) or []
-                names = [container.name for container in containers]
-                container = ("controller" if "controller" in names else
-                             names[0] if len(names) > 1 else None)
-                raw = self.core.read_namespaced_pod_log(
-                    name=pod.metadata.name, namespace=pod.metadata.namespace,
-                    container=container, since_seconds=86400, timestamps=False,
-                    _request_timeout=self.timeout)
-                hits.update((entry.ingress, entry.path) for entry in parse_network_logs(raw))
-        except Exception:
-            return self._network_hits  # keep the last good counts, retry next poll
-        self._network_hits, self._network_hits_at = dict(hits), time.time()
-        return self._network_hits
+        now = time.time()
+        controllers = [pod for pod in pod_list or [] if _is_ingress_controller(pod)]
+        if controllers and now - self._hits_read_at >= NETWORK_HITS_REFRESH:
+            since = self._hits.since_seconds(now)
+            try:
+                for pod in controllers:
+                    raw = self.core.read_namespaced_pod_log(
+                        name=pod.metadata.name, namespace=pod.metadata.namespace,
+                        container=_controller_container(pod), since_seconds=since,
+                        timestamps=False, _request_timeout=self.timeout)
+                    self._hits.add(parse_network_logs(raw), now)
+                self._hits.commit(now)
+                self._hits_read_at = now
+            except Exception:
+                pass  # the watermark stays put, so the next read covers the gap
+        return self._hits.totals()
 
     def describe_pod(self, namespace: str, name: str) -> dict:
         pod = self.core.read_namespaced_pod(name=name, namespace=namespace,
@@ -520,6 +513,98 @@ class KubeSource:
 
 
 NETWORK_HITS_REFRESH = 60.0
+HITS_WINDOW = 86400
+
+
+class HitCounter:
+    """Rolling 24h request counts per (ingress, path), saved between runs.
+
+    The logs API only serves the controller's current log file, so 24h can't
+    be re-read on demand; requests are counted once as they arrive instead.
+    Requests made while lcars-k8s isn't running are only caught up if the
+    controller's log hasn't rotated in the meantime.
+    """
+
+    def __init__(self, path: Path | None = None) -> None:
+        self.path = path
+        self.watermark = 0.0  # when the last complete read finished
+        self.buckets: dict[int, Counter] = {}  # minute -> (ingress, path) -> count
+        self.seen: dict[str, float] = {}  # recent request keys, so overlaps count once
+        self._load()
+
+    def since_seconds(self, now: float) -> int:
+        if not self.watermark:
+            return HITS_WINDOW
+        return int(min(HITS_WINDOW, max(0.0, now - self.watermark))) + 10
+
+    def add(self, entries: list[NetworkLog], now: float) -> None:
+        for entry in entries:
+            key = entry.identity or "\0".join(
+                (entry.time, str(entry.status), entry.ingress, entry.path))
+            if key in self.seen:
+                continue
+            when = _log_epoch(entry.time) or now
+            if when < now - HITS_WINDOW:
+                continue
+            self.seen[key] = when
+            self.buckets.setdefault(int(when // 60), Counter())[
+                (entry.ingress, entry.path.split("?", 1)[0])] += 1
+
+    def commit(self, now: float) -> None:
+        self.watermark = now
+        self.buckets = {minute: bucket for minute, bucket in self.buckets.items()
+                        if (minute + 1) * 60 > now - HITS_WINDOW}
+        self.seen = {key: when for key, when in self.seen.items() if when >= now - 600}
+        self._save()
+
+    def totals(self) -> dict[tuple[str, str], int]:
+        total: Counter = Counter()
+        for bucket in self.buckets.values():
+            total.update(bucket)
+        return dict(total)
+
+    def _load(self) -> None:
+        try:
+            data = json.loads(self.path.read_text(encoding="utf-8"))
+            self.watermark = float(data["watermark"])
+            self.buckets = {int(minute): Counter({(ingress, path): count
+                                                  for ingress, path, count in rows})
+                            for minute, rows in data["buckets"].items()}
+            self.seen = {str(key): float(when) for key, when in data["seen"].items()}
+        except (AttributeError, OSError, KeyError, TypeError, ValueError):
+            self.watermark, self.buckets, self.seen = 0.0, {}, {}
+
+    def _save(self) -> None:
+        if self.path is None:
+            return
+        data = {"watermark": self.watermark, "seen": self.seen,
+                "buckets": {str(minute): [[ingress, path, count]
+                                          for (ingress, path), count in bucket.items()]
+                            for minute, bucket in self.buckets.items()}}
+        try:
+            self.path.parent.mkdir(parents=True, exist_ok=True)
+            temp = self.path.with_suffix(".tmp")
+            temp.write_text(json.dumps(data), encoding="utf-8")
+            os.replace(temp, self.path)
+        except OSError:
+            pass  # counts still work for this run
+
+
+def _log_epoch(value: str) -> float | None:
+    for parse in (datetime.fromisoformat,
+                  lambda text: datetime.strptime(text, "%d/%b/%Y:%H:%M:%S %z")):
+        try:
+            return parse(value).timestamp()
+        except ValueError:
+            pass
+    return None
+
+
+def _controller_container(pod) -> str | None:
+    containers = getattr(getattr(pod, "spec", None), "containers", []) or []
+    names = [container.name for container in containers]
+    return ("controller" if "controller" in names else
+            names[0] if len(names) > 1 else None)
 
 
 def ingress_hit_counts(hits: dict[tuple[str, str], int],

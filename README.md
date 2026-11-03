@@ -525,9 +525,14 @@ services that poll every few seconds, start with `--network-exclude TEXT`; any
 request whose ingress or path contains the text is dropped from the table, and
 the table bar lists the active excludes. A 24H HITS panel beside the log
 totals requests per ingress over the last 24 hours, busiest first, leaving out
-anything matched by `--network-exclude`. It re-reads 24 hours of controller
-logs every minute, so counts can lag by up to a minute and cannot
-reach further back than the kubelet has kept the controller's logs. If Ingress NGINX is absent or inaccessible, the view
+anything matched by `--network-exclude`. The Kubernetes logs API only serves a
+controller's current log file, so lcars-k8s keeps the count itself: once a
+minute, on every view, it reads the controller logs written since its last read
+and adds each request once, in per-minute buckets that roll off after 24 hours.
+Counts are saved to `~/.cache/lcars-k8s/hits-<context>.json`, and on start it
+catches up on requests made while it was closed, as far back as the
+controller's current log file reaches. Until lcars-k8s has been running for a
+day, the panel covers less than 24 hours. If Ingress NGINX is absent or inaccessible, the view
 remains available and reports the condition in the status area.
 
 The verified JSON format uses `time`, `status`, `ingress`, and `path`:

@@ -1,7 +1,11 @@
+import tempfile
 import unittest
+from pathlib import Path
+from datetime import datetime, timezone
 from types import SimpleNamespace
 
-from lcarsk8s.cluster import KubeSource, ingress_hit_counts, parse_network_logs
+from lcarsk8s.cluster import (HitCounter, KubeSource, NetworkLog, ingress_hit_counts,
+                              parse_network_logs)
 
 
 class ParseNetworkLogsTests(unittest.TestCase):
@@ -119,6 +123,34 @@ class IngressHitCountTests(unittest.TestCase):
         self.assertEqual(ingress_hit_counts(hits, ("/healthz", "grafana")),
                          [("default-x-com-80", 200), ("default-y-com-80", 34)])
         self.assertEqual(ingress_hit_counts(hits)[0], ("default-x-com-80", 1100))
+
+
+class HitCounterTests(unittest.TestCase):
+    def test_counts_each_request_once_rolls_off_after_24h_and_persists(self):
+        now = 1_800_000_000.0  # 2027-01-15T08:00:00Z
+
+        def log(seconds_ago, path, ident):
+            when = datetime.fromtimestamp(now - seconds_ago, timezone.utc)
+            return NetworkLog(when.isoformat(timespec="seconds"), 200, "default-x-com-80",
+                              path, ident)
+
+        with tempfile.TemporaryDirectory() as folder:
+            path = Path(folder) / "hits.json"
+            counter = HitCounter(path)
+            self.assertEqual(counter.since_seconds(now), 86400)
+            counter.add([log(90000, "/", "too-old"), log(3600, "/?page=2", "a"),
+                         log(30, "/healthz", "b")], now)
+            counter.commit(now)
+            counter.add([log(30, "/healthz", "b"), log(5, "/healthz", "c")], now + 60)
+            counter.commit(now + 60)
+            self.assertEqual(counter.totals(), {("default-x-com-80", "/"): 1,
+                                                ("default-x-com-80", "/healthz"): 2})
+
+            reloaded = HitCounter(path)
+            self.assertEqual(reloaded.totals(), counter.totals())
+            self.assertEqual(reloaded.since_seconds(now + 120), 70)
+            reloaded.commit(now + 3600 + 86400)
+            self.assertEqual(reloaded.totals(), {})
 
 
 if __name__ == "__main__":
