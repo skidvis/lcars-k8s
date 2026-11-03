@@ -200,6 +200,7 @@ class NetworkLog:
     ingress: str
     path: str
     identity: str = ""
+    ip: str = ""
 
 
 @dataclass
@@ -629,7 +630,7 @@ def _is_ingress_controller(raw) -> bool:
 
 
 NGINX_ACCESS_RE = re.compile(
-    r'^\S+ - \S+ \[(?P<time>[^]]+)] "(?P<request>[^"]*)" '
+    r'^(?P<ip>\S+) - \S+ \[(?P<time>[^]]+)] "(?P<request>[^"]*)" '
     r'(?P<status>\d{3})(?P<rest>.*)$'
 )
 NGINX_UPSTREAM_RE = re.compile(r'"[^"]*" "[^"]*" \S+ \S+ \[(?P<upstream>[^]]*)]')
@@ -669,6 +670,8 @@ def parse_network_logs(raw: str | bytes) -> list[NetworkLog]:
                 path=str(path),
                 identity=str(value.get("id") or value.get("request_id")
                              or value.get("req_id") or line),
+                ip=str(value.get("ip") or value.get("remote_addr")
+                       or value.get("client_ip") or "-"),
             ))
             continue
         match = NGINX_ACCESS_RE.match(line)
@@ -684,6 +687,7 @@ def parse_network_logs(raw: str | bytes) -> list[NetworkLog]:
             ingress=(upstream.group("upstream") if upstream else "-"),
             path=request[1] if len(request) > 1 else "-",
             identity=parts[-1] if parts else line,
+            ip=match.group("ip"),
         ))
     return entries
 
@@ -993,6 +997,7 @@ class DemoSource:
                     status=statuses[index % len(statuses)],
                     ingress=("web-ingress" if index % 3 else "api-ingress"),
                     path=paths[index % len(paths)],
+                    ip=f"203.0.113.{17 + index % 9 * 23}",
                 ))
             snap.network_message = "1 ingress controller pod (demo)"
             snap.network_hits = {("web-ingress", "/"): 1840 + self.tick,

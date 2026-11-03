@@ -428,7 +428,7 @@ class LcarsGraphics:
                        and not any(text in entry.ingress.lower() or text in entry.path.lower()
                                    for text in self.network_exclude)
                        and (not needle or needle in
-                            f"{entry.time} {entry.status} {entry.ingress} {entry.path}".lower())]
+                            f"{entry.ip} {entry.status} {entry.ingress} {entry.path}".lower())]
             pending = [entry for entry in entries
                        if self._network_key(entry) in self.network_reveal_ids]
             progress = min(
@@ -684,7 +684,7 @@ class LcarsGraphics:
                        ("UNAVAILABLE", 1220), ("STRATEGY", 1400),
                        ("AGE", 1510))
         elif self.view == "network":
-            columns = (("TIME", 18), ("STATUS", 390), ("INGRESS", 520),
+            columns = (("IP", 18), ("STATUS", 390), ("INGRESS", 520),
                        ("PATH", 900))
         else:
             columns = (("AGE", 18), ("TYPE", 120), ("REASON", 240),
@@ -768,7 +768,7 @@ class LcarsGraphics:
                       (item.strategy, 1400, LILAC),
                       (humanize_age(item.created), 1510, GREY))
         elif self.view == "network":
-            values = ((item.time, 18, BLACK),
+            values = ((item.ip, 18, BLACK),
                       (str(item.status), 390, BLACK),
                       (item.ingress, 520, BLACK),
                       (item.path, 900, BLACK))

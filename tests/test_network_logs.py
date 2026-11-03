@@ -23,6 +23,7 @@ class ParseNetworkLogsTests(unittest.TestCase):
         self.assertEqual(entries[0].status, 200)
         self.assertEqual(entries[0].ingress, "default-orders-80")
         self.assertEqual(entries[0].path, "/api/orders?id=2")
+        self.assertEqual(entries[0].ip, "10.0.0.1")
 
     def test_parses_live_ingress_json_format(self):
         raw = (
@@ -39,6 +40,7 @@ class ParseNetworkLogsTests(unittest.TestCase):
         self.assertEqual(entries[0].status, 404)
         self.assertEqual(entries[0].ingress, "default-www-depletement-com-80")
         self.assertEqual(entries[0].path, "/wp-admin/install.php")
+        self.assertEqual(entries[0].ip, "172.16.46.24")
 
     def test_parses_stringified_bytes_from_kubernetes_client(self):
         raw = repr(

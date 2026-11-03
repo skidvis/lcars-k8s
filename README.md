@@ -519,7 +519,7 @@ retained history. Graphical network row backgrounds use periwinkle
 for 2xx, lavender for 3xx, gold for 4xx, red for 5xx, and grey for other status
 families, keeping them distinct from the ice table header. Row text is black,
 and the selected row has a white outline. For default-format logs, the ingress
-column shows the upstream name. Press `/` or `f` to filter the visible time, status, ingress or
+column shows the upstream name. Press `/` or `f` to filter the visible IP, status, ingress or
 upstream name, or path. To hide noisy traffic such as health checks or
 services that poll every few seconds, start with `--network-exclude TEXT`; any
 request whose ingress or path contains the text is dropped from the table, and

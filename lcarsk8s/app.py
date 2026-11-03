@@ -261,7 +261,7 @@ class LcarsK8s(App):
 
         network = self.query_one("#network", DataTable)
         for label, key, width in (
-            ("TIME", "time", 30), ("STATUS", "status", 8),
+            ("IP", "ip", 30), ("STATUS", "status", 8),
             ("INGRESS", "ingress", 32), ("PATH", "path", 70),
         ):
             network.add_column(Text(label), key=key, width=width)
@@ -490,7 +490,7 @@ class LcarsK8s(App):
                    and not any(text in entry.ingress.lower() or text in entry.path.lower()
                                for text in self.network_exclude)
                    and self._matches(str(entry.status), entry.ingress, entry.path,
-                                     entry.time)]
+                                     entry.ip)]
         table.clear()
         for index, entry in enumerate(entries):
             if entry.status >= 500:
@@ -504,7 +504,7 @@ class LcarsK8s(App):
             else:
                 colour = P.GREY
             table.add_row(
-                Text(entry.time, style=colour),
+                Text(entry.ip, style=colour),
                 Text(str(entry.status), style=Style(color=colour, bold=True)),
                 Text(entry.ingress, style=colour),
                 Text(entry.path, style=colour),
